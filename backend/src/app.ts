@@ -1,4 +1,5 @@
 import express, { type Express } from 'express';
+import { isIP } from 'node:net';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -31,6 +32,18 @@ export function createApp(): Express {
   // rather than the proxy — rate limiting depends on this being correct.
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
+
+  // Behind a CDN (Cloudflare), take the visitor's IP from the CDN's header so
+  // rate limits are per visitor, not per CDN edge server.
+  if (env.CLIENT_IP_HEADER) {
+    const header = env.CLIENT_IP_HEADER;
+    app.use((req, _res, next) => {
+      const value = req.headers[header];
+      const ip = (Array.isArray(value) ? value[0] : value)?.trim();
+      if (ip && isIP(ip)) Object.defineProperty(req, 'ip', { value: ip, configurable: true });
+      next();
+    });
+  }
 
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 

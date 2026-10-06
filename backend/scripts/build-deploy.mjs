@@ -57,6 +57,12 @@ await build({
   external: runtimeDeps,
   logLevel: 'warning',
   legalComments: 'none',
+  // Runs before any require(): an old Node (cPanel often defaults to 10) would
+  // otherwise crash deep inside a dependency with a baffling SyntaxError.
+  // Written in syntax that even Node 10 can parse.
+  banner: {
+    js: `if (Number(process.versions.node.split('.')[0]) < 20) { console.error('\\n✗ Node.js ' + process.versions.node + ' is too old. This app needs Node.js 20 or newer.\\n  In cPanel → Setup Node.js App, set the Node.js version to 20+, Run NPM Install,\\n  and activate the matching environment (…/nodevenv/<app>/20/bin/activate).\\n'); process.exit(1); }`,
+  },
 });
 
 console.log('› Copying migrations');

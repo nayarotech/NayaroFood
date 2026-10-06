@@ -83,6 +83,19 @@ const envSchema = z
     VAPID_SUBJECT: z.string().default('mailto:support@nayaro.tech'),
 
     RATE_LIMIT_ENABLED: booleanish.default(true),
+    /**
+     * Header carrying the real visitor IP when a CDN sits in front, e.g.
+     * `cf-connecting-ip` for Cloudflare. Without it every visitor appears to
+     * come from the CDN's address and they all share one rate-limit bucket.
+     * Only set this when ALL traffic reaches the server through that CDN —
+     * otherwise a client could send the header itself and pick its own IP.
+     */
+    CLIENT_IP_HEADER: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(/^[a-z0-9-]*$/, 'CLIENT_IP_HEADER must be a header name like cf-connecting-ip.')
+      .default(''),
 
     /** Offset that defines a platform "day" in admin reports. Nepal is +05:45. */
     PLATFORM_UTC_OFFSET: z

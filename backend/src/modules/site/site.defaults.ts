@@ -68,7 +68,7 @@ export const DEFAULT_CHROME: ChromeContent = {
         ],
       },
     ],
-    contact: { email: 'support@nayaro.tech', phone: '', address: 'Kathmandu, Nepal' },
+    contact: { email: 'support@nayaro.tech', phone: '', address: 'Urlabari, Nepal' },
     social: { facebook: '', instagram: '', tiktok: '', youtube: '' },
     copyright: 'Nayaro Tech',
   },
