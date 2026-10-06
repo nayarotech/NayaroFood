@@ -11,6 +11,8 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 
+backend.zip
+
 # env — never commit secrets
 .env
 .env.*
@@ -37,3 +39,6 @@ pnpm-debug.log*
 
 # backend production build (contains generated secrets)
 backend/deploy/
+
+# deployment archives (the backend zip contains production secrets)
+*.zip

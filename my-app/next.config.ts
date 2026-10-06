@@ -12,8 +12,11 @@ const nextConfig: NextConfig = {
     root: path.join(__dirname, '..'),
   },
 
-  /** Shared rules (delivery zones, money, status machine) ship as TypeScript source. */
-  transpilePackages: ['@nayaro/shared'],
+  /*
+   * @nayaro/shared is used for types only (via the tsconfig `paths` entry), so
+   * the web build never needs packages/shared/dist — which is git-ignored and
+   * not built on Vercel.
+   */
 
   typedRoutes: true,
 };

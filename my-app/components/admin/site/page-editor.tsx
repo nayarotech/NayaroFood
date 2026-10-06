@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Route } from 'next';
-import { slugify } from '@nayaro/shared';
+import { slugify } from '@/lib/slug';
 import { ApiError, apiDelete, apiPatch, apiPost } from '@/lib/api';
 import { Markdown } from '@/components/site/markdown';
 import { refreshSiteContent } from '@/app/admin/site/actions';
