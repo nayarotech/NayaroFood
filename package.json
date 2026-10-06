@@ -1,0 +1,22 @@
+{
+  "name": "food-delivery-nayaro",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-tenant SaaS food delivery platform by Nayaro Tech",
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./my-app\" --filter \"./backend\" dev",
+    "dev:web": "pnpm --filter ./my-app dev",
+    "dev:api": "pnpm --filter ./backend dev",
+    "build": "pnpm --filter ./packages/shared build && pnpm --filter ./backend build && pnpm --filter ./my-app build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter ./backend db:generate",
+    "db:migrate": "pnpm --filter ./backend db:migrate",
+    "db:seed": "pnpm --filter ./backend db:seed"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "packageManager": "pnpm@10.18.0"
+}

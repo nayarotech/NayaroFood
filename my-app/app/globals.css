@@ -1,0 +1,170 @@
+@import "tailwindcss";
+
+/**
+ * Nayaro Tech design tokens, mirrored from nayaro.tech so the platform reads as
+ * part of the same product. Change a value here and it changes everywhere.
+ */
+:root {
+  /* Brand blue, used in bold saturated blocks rather than thin accents. */
+  --ny-accent: #1f5eff;
+  --ny-accent-bright: #4f82ff;
+  --ny-accent-deep: #1440c4;
+  --ny-accent-hover: #1749cc;
+  --ny-accent-label: #1a4fd6;
+  --ny-accent-soft: #f0f5ff;
+  --ny-accent-pill: #dee9ff;
+  --ny-accent-border: #c3d6ff;
+  --ny-on-accent: #ffffff;
+
+  /* Neutrals are tinted toward blue — never grey — so white reads as part of
+     the brand rather than as an absence of colour. */
+  --ny-background: #f6f9ff;
+  --ny-surface: #ffffff;
+  --ny-surface-muted: #eef4ff;
+  --ny-surface-inset: #e5edff;
+
+  --ny-foreground: #0a1124;
+  --ny-foreground-hi: #1b2540;
+  --ny-foreground-muted: #4e5b78;
+  --ny-foreground-subtle: #64708c;
+  --ny-foreground-label: #7b869e;
+
+  --ny-border: #e3eafb;
+  --ny-border-soft: #edf2fd;
+  --ny-border-strong: #cfdcf7;
+
+  --ny-success: #0f8a55;
+  --ny-success-soft: #e3f7ee;
+  --ny-warning: #a06a05;
+  --ny-warning-soft: #fdf2dd;
+  --ny-danger: #d33a2c;
+  --ny-danger-soft: #fdeceb;
+
+  --ny-radius: 10px;
+  --ny-radius-card: 16px;
+  --ny-radius-pill: 999px;
+
+  --ny-shadow-card: 0 1px 3px rgba(16, 36, 94, 0.06);
+  --ny-shadow-card-hover: 0 14px 34px rgba(16, 36, 94, 0.13);
+  --ny-shadow-accent: 0 10px 28px rgba(31, 94, 255, 0.3);
+
+  --ny-wash: radial-gradient(120% 100% at 85% 0%, #e2ecff 0%, #f6f9ff 55%, #ffffff 100%);
+  --ny-accent-gradient: linear-gradient(145deg, #2a67ff 0%, #1f5eff 45%, #1440c4 100%);
+}
+
+:root[data-theme="dark"] {
+    --ny-accent-hover: #4a7cff;
+    --ny-accent-label: #7fa6ff;
+    --ny-accent-soft: rgba(31, 94, 255, 0.08);
+    --ny-accent-pill: rgba(31, 94, 255, 0.2);
+    --ny-accent-border: rgba(31, 94, 255, 0.28);
+
+    --ny-background: #0a0e17;
+    --ny-surface: #111726;
+    --ny-surface-muted: #0c1119;
+    --ny-surface-inset: #0e1421;
+
+    --ny-foreground: #f7f9fc;
+    --ny-foreground-hi: #c9d1e0;
+    --ny-foreground-muted: #98a2b8;
+    --ny-foreground-subtle: #8c97ae;
+    --ny-foreground-label: #7e8aa3;
+
+    --ny-border: rgba(255, 255, 255, 0.09);
+    --ny-border-soft: rgba(255, 255, 255, 0.08);
+    --ny-border-strong: rgba(255, 255, 255, 0.12);
+
+    --ny-success: #5ed6a0;
+    --ny-success-soft: rgba(94, 214, 160, 0.12);
+    --ny-warning: #f0c274;
+    --ny-warning-soft: rgba(240, 194, 116, 0.12);
+    --ny-danger: #ff8f8f;
+    --ny-danger-soft: rgba(255, 143, 143, 0.12);
+
+    --ny-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --ny-shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+
+
+/* Expose the tokens to Tailwind as background, text and border utilities. */
+@theme inline {
+  --color-accent: var(--ny-accent);
+  --color-accent-hover: var(--ny-accent-hover);
+  --color-accent-bright: var(--ny-accent-bright);
+  --color-accent-deep: var(--ny-accent-deep);
+  --color-accent-label: var(--ny-accent-label);
+  --color-accent-soft: var(--ny-accent-soft);
+  --color-accent-pill: var(--ny-accent-pill);
+  --color-accent-border: var(--ny-accent-border);
+  --color-on-accent: var(--ny-on-accent);
+
+  --color-background: var(--ny-background);
+  --color-surface: var(--ny-surface);
+  --color-surface-muted: var(--ny-surface-muted);
+  --color-surface-inset: var(--ny-surface-inset);
+
+  --color-ink: var(--ny-foreground);
+  --color-ink-hi: var(--ny-foreground-hi);
+  --color-ink-muted: var(--ny-foreground-muted);
+  --color-ink-subtle: var(--ny-foreground-subtle);
+  --color-ink-label: var(--ny-foreground-label);
+
+  --color-line: var(--ny-border);
+  --color-line-soft: var(--ny-border-soft);
+  --color-line-strong: var(--ny-border-strong);
+
+  --color-success: var(--ny-success);
+  --color-success-soft: var(--ny-success-soft);
+  --color-warning: var(--ny-warning);
+  --color-warning-soft: var(--ny-warning-soft);
+  --color-danger: var(--ny-danger);
+  --color-danger-soft: var(--ny-danger-soft);
+
+  --radius-ny: var(--ny-radius);
+  --radius-ny-card: var(--ny-radius-card);
+  --radius-ny-pill: var(--ny-radius-pill);
+
+  --font-sans: var(--font-plex-sans);
+  --font-display: var(--font-archivo);
+  --font-mono: var(--font-plex-mono);
+}
+
+body {
+  background: var(--ny-background);
+  background-image: var(--ny-wash);
+  background-attachment: fixed;
+  color: var(--ny-foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--ny-accent-pill);
+}
+
+/* Visible focus for keyboard users on every interactive element. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--ny-accent);
+  outline-offset: 2px;
+  border-radius: var(--ny-radius);
+}
+
+/* New-order card entrance. */
+@keyframes ny-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
