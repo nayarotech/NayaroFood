@@ -6,3 +6,5 @@ export * from './delivery.js';
 export * from './order.js';
 export * from './whatsapp.js';
 export * from './site.js';
+export * from './customer.js';
+export * from './staff.js';

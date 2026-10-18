@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { fetchPaged, param, toQuery } from '@/lib/dashboard-api';
-import { formatDate, formatMoney, timeAgo } from '@/lib/format';
+import { formatMoney, timeAgo } from '@/lib/format';
 import { EmptyState, PageHeader } from '@/components/admin/page-header';
 import { Pagination } from '@/components/pagination';
 
@@ -13,90 +13,98 @@ interface Row {
   name: string;
   phone: string;
   email: string | null;
-  createdAt: string;
+  hasAccount: boolean;
+  isBlocked: boolean;
+  reports: number;
   orders: number;
-  delivered: number;
   cancelled: number;
   restaurants: number;
   spentMinor: number;
   lastOrderAt: string | null;
 }
 
-const PER_PAGE = 25;
+const FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'reported', label: 'Reported' },
+  { value: 'blocked', label: 'Blocked' },
+] as const;
 
 export default async function AdminCustomersPage({ searchParams }: PageProps<'/admin/customers'>) {
   const query = await searchParams;
   const search = param(query.q)?.trim() || undefined;
+  const filterParam = param(query.filter);
+  const filter = FILTERS.some((f) => f.value === filterParam) ? filterParam! : 'all';
   const page = Math.max(1, Number(param(query.page)) || 1);
-  const result = await fetchPaged<Row>(`/admin/customers${toQuery({ search, page, perPage: PER_PAGE })}`);
+  const result = await fetchPaged<Row>(`/admin/customers${toQuery({ search, filter, page, perPage: 25 })}`);
 
   return (
     <div>
-      <PageHeader title="Customers" description="Everyone who has ordered, across all restaurants. Identified by phone number." />
+      <PageHeader
+        title="Customers"
+        description="Everyone with an account or an order. Restaurants and riders report problem customers; block repeat offenders here."
+      />
 
-      <form action="/admin/customers" className="mb-4 flex gap-2">
-        <input
-          type="search"
-          name="q"
-          defaultValue={search}
-          placeholder="Search name or phone"
-          aria-label="Search customers"
-          className="min-w-0 flex-1 rounded-ny border border-line bg-surface px-3.5 py-2 text-sm focus:border-accent focus:outline-none sm:max-w-xs"
-        />
-        <button type="submit" className="rounded-ny bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-hover">
-          Search
-        </button>
-      </form>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {FILTERS.map((f) => (
+          <Link key={f.value} href={`/admin/customers${toQuery({ filter: f.value === 'all' ? undefined : f.value, q: search })}` as Route}
+            aria-current={filter === f.value ? 'page' : undefined}
+            className={`rounded-ny-pill px-3 py-1.5 text-sm ${filter === f.value ? 'bg-ink font-medium text-white' : 'border border-line bg-surface text-ink-muted hover:border-line-strong'}`}>
+            {f.label}
+          </Link>
+        ))}
+        <form action="/admin/customers" className="ml-auto flex gap-2">
+          {filter !== 'all' && <input type="hidden" name="filter" value={filter} />}
+          <input type="search" name="q" defaultValue={search} placeholder="Name, phone or email" aria-label="Search customers"
+            className="w-56 rounded-ny border border-line bg-surface px-3 py-1.5 text-sm focus:border-accent focus:outline-none" />
+          <button type="submit" className="rounded-ny border border-line bg-surface px-3 py-1.5 text-sm font-medium hover:border-line-strong">Search</button>
+        </form>
+      </div>
 
       {!result ? (
         <EmptyState>Couldn&rsquo;t load customers.</EmptyState>
       ) : result.items.length === 0 ? (
-        <EmptyState>{search ? `No customers match “${search}”.` : 'No customers yet.'}</EmptyState>
+        <EmptyState>{filter === 'reported' ? 'No reported customers.' : filter === 'blocked' ? 'No blocked customers.' : 'No customers yet.'}</EmptyState>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-ny-card border border-line bg-surface shadow-[var(--ny-shadow-card)]">
-            <table className="w-full min-w-[760px] text-left text-sm">
+          <div className="overflow-x-auto rounded-ny-card border border-line bg-surface">
+            <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="border-b border-line bg-surface-muted text-xs text-ink-label">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">Customer</th>
                   <th className="px-4 py-2.5 text-right font-medium">Orders</th>
                   <th className="px-4 py-2.5 text-right font-medium">Cancelled</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Restaurants</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Reports</th>
                   <th className="px-4 py-2.5 text-right font-medium">Spent</th>
                   <th className="px-4 py-2.5 font-medium">Last order</th>
+                  <th className="px-4 py-2.5 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line-soft">
-                {result.items.map((customer) => (
-                  <tr key={customer.id} className="transition-colors hover:bg-surface-muted/60">
+                {result.items.map((c) => (
+                  <tr key={c.id} className="hover:bg-surface-muted/60">
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/admin/orders?q=${encodeURIComponent(customer.phone)}` as Route}
-                        className="font-medium hover:text-accent-label"
-                      >
-                        {customer.name}
-                      </Link>
-                      <p className="font-mono text-[11px] text-ink-label">{customer.phone}</p>
+                      <Link href={`/admin/customers/${c.id}` as Route} className="font-medium hover:text-accent-label">{c.name}</Link>
+                      <p className="text-xs text-ink-label">{c.phone}{c.hasAccount ? '' : ' · guest (no account)'}</p>
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums">
-                      {customer.orders}
-                      {customer.orders > 1 && <span className="ml-1 rounded-ny-pill bg-success-soft px-1.5 text-[10px] font-bold text-success">repeat</span>}
-                    </td>
-                    <td className={`px-4 py-3 text-right tabular-nums ${customer.cancelled > 0 ? 'text-danger' : 'text-ink-muted'}`}>
-                      {customer.cancelled}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">{customer.restaurants}</td>
-                    <td className="px-4 py-3 text-right font-medium tabular-nums">{formatMoney(customer.spentMinor)}</td>
-                    <td className="px-4 py-3 text-xs text-ink-muted" title={formatDate(customer.lastOrderAt)}>
-                      {timeAgo(customer.lastOrderAt)}
+                    <td className="px-4 py-3 text-right tabular-nums">{c.orders}</td>
+                    <td className={`px-4 py-3 text-right tabular-nums ${c.cancelled > 0 ? 'text-warning' : 'text-ink-muted'}`}>{c.cancelled}</td>
+                    <td className={`px-4 py-3 text-right font-medium tabular-nums ${c.reports > 0 ? 'text-danger' : 'text-ink-label'}`}>{c.reports}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{formatMoney(c.spentMinor)}</td>
+                    <td className="px-4 py-3 text-xs text-ink-muted">{timeAgo(c.lastOrderAt)}</td>
+                    <td className="px-4 py-3">
+                      {c.isBlocked ? (
+                        <span className="rounded-ny-pill bg-danger-soft px-2 py-0.5 text-[11px] font-semibold text-danger">Blocked</span>
+                      ) : (
+                        <span className="text-xs text-ink-label">Active</span>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <Pagination basePath="/admin/customers" params={{ q: search }} page={result.meta.page}
-            totalPages={result.meta.totalPages} total={result.meta.total} perPage={result.meta.perPage} />
+          <Pagination basePath="/admin/customers" params={{ q: search, filter: filter === 'all' ? undefined : filter }}
+            page={result.meta.page} totalPages={result.meta.totalPages} total={result.meta.total} perPage={result.meta.perPage} />
         </>
       )}
     </div>

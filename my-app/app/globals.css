@@ -1,55 +1,53 @@
 @import "tailwindcss";
 
 /**
- * Nayaro Tech design tokens, mirrored from nayaro.tech so the platform reads as
- * part of the same product. Change a value here and it changes everywhere.
+ * Nayaro design tokens (see README → Theme). Neutral greys carry the layout;
+ * the brand blue is reserved for actions and state, so it means something
+ * wherever it appears. Change a value here and it changes everywhere.
  */
 :root {
-  /* Brand blue, used in bold saturated blocks rather than thin accents. */
   --ny-accent: #1f5eff;
-  --ny-accent-bright: #4f82ff;
+  --ny-accent-bright: #3b73ff;
   --ny-accent-deep: #1440c4;
   --ny-accent-hover: #1749cc;
   --ny-accent-label: #1a4fd6;
-  --ny-accent-soft: #f0f5ff;
-  --ny-accent-pill: #dee9ff;
-  --ny-accent-border: #c3d6ff;
+  --ny-accent-soft: #f2f6ff;
+  --ny-accent-pill: #e3ecff;
+  --ny-accent-border: #c7d7fe;
   --ny-on-accent: #ffffff;
 
-  /* Neutrals are tinted toward blue — never grey — so white reads as part of
-     the brand rather than as an absence of colour. */
-  --ny-background: #f6f9ff;
+  --ny-background: #f7f8fa;
   --ny-surface: #ffffff;
-  --ny-surface-muted: #eef4ff;
-  --ny-surface-inset: #e5edff;
+  --ny-surface-muted: #f3f4f6;
+  --ny-surface-inset: #eceef1;
 
-  --ny-foreground: #0a1124;
-  --ny-foreground-hi: #1b2540;
-  --ny-foreground-muted: #4e5b78;
-  --ny-foreground-subtle: #64708c;
-  --ny-foreground-label: #7b869e;
+  --ny-foreground: #111726;
+  --ny-foreground-hi: #222a3a;
+  --ny-foreground-muted: #4b5565;
+  --ny-foreground-subtle: #5f6878;
+  --ny-foreground-label: #737c8c;
 
-  --ny-border: #e3eafb;
-  --ny-border-soft: #edf2fd;
-  --ny-border-strong: #cfdcf7;
+  --ny-border: #e4e7ec;
+  --ny-border-soft: #eef0f3;
+  --ny-border-strong: #d0d5dd;
 
-  --ny-success: #0f8a55;
-  --ny-success-soft: #e3f7ee;
-  --ny-warning: #a06a05;
-  --ny-warning-soft: #fdf2dd;
-  --ny-danger: #d33a2c;
-  --ny-danger-soft: #fdeceb;
+  --ny-success: #067647;
+  --ny-success-soft: #ecfdf3;
+  --ny-warning: #b54708;
+  --ny-warning-soft: #fffaeb;
+  --ny-danger: #c4320a;
+  --ny-danger-soft: #fef3f2;
 
-  --ny-radius: 10px;
-  --ny-radius-card: 16px;
+  --ny-radius: 6px;
+  --ny-radius-card: 10px;
   --ny-radius-pill: 999px;
 
-  --ny-shadow-card: 0 1px 3px rgba(16, 36, 94, 0.06);
-  --ny-shadow-card-hover: 0 14px 34px rgba(16, 36, 94, 0.13);
-  --ny-shadow-accent: 0 10px 28px rgba(31, 94, 255, 0.3);
+  --ny-shadow-card: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --ny-shadow-card-hover: 0 8px 24px rgba(16, 24, 40, 0.1);
+  --ny-shadow-accent: 0 1px 2px rgba(16, 24, 40, 0.08);
 
-  --ny-wash: radial-gradient(120% 100% at 85% 0%, #e2ecff 0%, #f6f9ff 55%, #ffffff 100%);
-  --ny-accent-gradient: linear-gradient(145deg, #2a67ff 0%, #1f5eff 45%, #1440c4 100%);
+  --ny-wash: none;
+  --ny-accent-gradient: linear-gradient(135deg, #1f5eff 0%, #1440c4 100%);
 }
 
 :root[data-theme="dark"] {
@@ -131,10 +129,9 @@
 
 body {
   background: var(--ny-background);
-  background-image: var(--ny-wash);
-  background-attachment: fixed;
   color: var(--ny-foreground);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 ::selection {

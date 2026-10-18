@@ -9,6 +9,7 @@ import { OrderStatus } from './enums.js';
 /** Who is asking for the transition. */
 export const Actor = {
   RESTAURANT: 'RESTAURANT',
+  RIDER: 'RIDER',
   CUSTOMER: 'CUSTOMER',
   SUPER_ADMIN: 'SUPER_ADMIN',
   SYSTEM: 'SYSTEM',
@@ -61,7 +62,8 @@ const TRANSITIONS: Readonly<Record<OrderStatus, readonly TransitionRule[]>> = {
   [OrderStatus.READY]: [
     {
       to: OrderStatus.OUT_FOR_DELIVERY,
-      actors: [Actor.RESTAURANT, Actor.SUPER_ADMIN],
+      // The rider marks pick-up themselves when one is assigned.
+      actors: [Actor.RESTAURANT, Actor.RIDER, Actor.SUPER_ADMIN],
       label: 'Send out for delivery',
     },
     {
@@ -72,10 +74,11 @@ const TRANSITIONS: Readonly<Record<OrderStatus, readonly TransitionRule[]>> = {
     },
   ],
   [OrderStatus.OUT_FOR_DELIVERY]: [
-    { to: OrderStatus.DELIVERED, actors: [Actor.RESTAURANT, Actor.SUPER_ADMIN], label: 'Mark delivered' },
+    { to: OrderStatus.DELIVERED, actors: [Actor.RESTAURANT, Actor.RIDER, Actor.SUPER_ADMIN], label: 'Mark delivered' },
     {
       to: OrderStatus.CANCELLED,
-      actors: [Actor.RESTAURANT, Actor.SUPER_ADMIN],
+      // A rider can record a failed delivery (customer unreachable, refused …).
+      actors: [Actor.RESTAURANT, Actor.RIDER, Actor.SUPER_ADMIN],
       label: 'Cancel',
       requiresReason: true,
     },

@@ -1,3 +1,4 @@
+import { StaffPermission } from '@nayaro/shared';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 import { randomBytes } from 'node:crypto';
@@ -5,7 +6,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
-import { requireAuth, requireRestaurant, tenantOf } from '../../http/middleware/auth.js';
+import { requireAuth, requirePermission, requireRestaurant, tenantOf } from '../../http/middleware/auth.js';
 import { asyncHandler, validateQuery, validatedQuery } from '../../http/middleware/validate.js';
 import { badRequest } from '../../http/errors.js';
 import { created } from '../../http/respond.js';
@@ -21,7 +22,7 @@ import { created } from '../../http/respond.js';
  */
 export const uploadsRouter: Router = Router();
 
-uploadsRouter.use(requireAuth, requireRestaurant);
+uploadsRouter.use(requireAuth, requireRestaurant, requirePermission(StaffPermission.MENU, StaffPermission.SETTINGS));
 
 const upload = multer({
   storage: multer.memoryStorage(),

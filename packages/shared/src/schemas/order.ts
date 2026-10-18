@@ -29,11 +29,17 @@ export const placeOrderSchema = z.object({
     .array(placeOrderItemSchema)
     .min(1, 'Your cart is empty.')
     .max(50, 'Too many items in one order.'),
-  customer: z.object({
-    name: z.string().trim().min(2, 'Enter your name.').max(120),
-    phone: phoneSchema,
-    email: z.email().optional(),
-  }),
+  /**
+   * Ignored by the API: the name and phone come from the signed-in customer's
+   * account. Kept optional so older clients don't fail validation.
+   */
+  customer: z
+    .object({
+      name: z.string().trim().max(120).optional(),
+      phone: z.string().trim().max(30).optional(),
+      email: z.string().trim().max(190).optional(),
+    })
+    .optional(),
   delivery: z.object({
     address: z.string().trim().min(5, 'Enter your delivery address.').max(255),
     latitude: latitudeSchema,
@@ -105,8 +111,12 @@ export const trackingCodeSchema = z
 export const trackingCodeParamSchema = z.object({ code: trackingCodeSchema });
 
 export const customerCancelSchema = z.object({
-  /** Must match the phone the order was placed with. */
-  phone: phoneSchema,
+  /**
+   * Not needed when the signed-in customer owns the order. Otherwise it must
+   * match the phone the order was placed with — the tracking code alone is
+   * shareable, so it is never enough to cancel.
+   */
+  phone: phoneSchema.optional(),
   reason: z.string().trim().max(300).optional(),
 });
 export type CustomerCancelInput = z.infer<typeof customerCancelSchema>;

@@ -7,6 +7,8 @@ const LABELS: Record<string, string> = {
   'restaurant.reactivated': 'Reactivated the restaurant',
   'restaurant.returned_to_review': 'Returned to review',
   'order.status_override': 'Changed an order status',
+  'customer.blocked': 'Blocked a customer',
+  'customer.unblocked': 'Unblocked a customer',
   'ranking.adjust': 'Adjusted ranking',
   'ranking.reorder': 'Re-ordered pinned restaurants',
   'ranking.recompute': 'Recomputed all ranking scores',
@@ -24,5 +26,6 @@ export const ACTION_FILTERS = [
   { value: '', label: 'All activity' },
   { value: 'restaurant.', label: 'Restaurant status' },
   { value: 'order.', label: 'Order overrides' },
+  { value: 'customer.', label: 'Customers' },
   { value: 'ranking.', label: 'Ranking' },
 ];

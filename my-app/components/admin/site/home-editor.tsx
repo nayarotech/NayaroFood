@@ -7,6 +7,8 @@ import { ApiError, apiPost, apiPut } from '@/lib/api';
 import { ImageUpload } from '@/components/image-upload';
 import { refreshSiteContent } from '@/app/admin/site/actions';
 import { EditorCard, SaveBar, SmallButton, TextArea, TextField, useUnsavedWarning } from './form-ui';
+import { SITE_ICON_MAP } from '@/components/site/site-icon';
+import { ChevronDown, ChevronRight, ChevronUp, X } from 'lucide-react';
 
 type Notice = { tone: 'ok' | 'error'; text: string } | null;
 
@@ -143,7 +145,7 @@ export function HomeEditor({ initial }: { initial: HomeContent }) {
                     const photos = [...home.photos];
                     [photos[index - 1], photos[index]] = [photos[index]!, photos[index - 1]!];
                     patch({ photos });
-                  }}>↑</SmallButton>
+                  }}><ChevronUp aria-hidden className="size-3.5" /></SmallButton>
                   <SmallButton danger onClick={() => setPhoto(index, null)}>Remove</SmallButton>
                 </div>
               </div>
@@ -191,12 +193,12 @@ export function HomeEditor({ initial }: { initial: HomeContent }) {
               <li key={section.id} className={`rounded-ny border ${hasError ? 'border-danger' : expanded ? 'border-accent-border' : 'border-line'}`}>
                 <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
                   <button type="button" onClick={() => setOpen(expanded ? null : section.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                    <span aria-hidden className="text-ink-label">{expanded ? '▾' : '▸'}</span>
+                    {expanded ? <ChevronDown aria-hidden className="size-4 text-ink-label" /> : <ChevronRight aria-hidden className="size-4 text-ink-label" />}
                     <span className="rounded-ny-pill bg-surface-inset px-2 py-0.5 text-[11px] font-semibold text-ink-muted">{SECTION_LABEL[section.type]}</span>
                     <span className="truncate text-sm font-medium">{section.title || 'Untitled section'}</span>
                   </button>
-                  <SmallButton aria-label="Move up" disabled={index === 0} onClick={() => moveSection(index, -1)}>↑</SmallButton>
-                  <SmallButton aria-label="Move down" disabled={index === home.sections.length - 1} onClick={() => moveSection(index, 1)}>↓</SmallButton>
+                  <SmallButton aria-label="Move up" disabled={index === 0} onClick={() => moveSection(index, -1)}><ChevronUp aria-hidden className="size-3.5" /></SmallButton>
+                  <SmallButton aria-label="Move down" disabled={index === home.sections.length - 1} onClick={() => moveSection(index, 1)}><ChevronDown aria-hidden className="size-3.5" /></SmallButton>
                   <SmallButton danger onClick={() => {
                     if (window.confirm(`Remove the “${section.title || 'untitled'}” section?`)) setSection(index, null);
                   }}>Remove</SmallButton>
@@ -237,17 +239,26 @@ function SectionFields({ section, onChange, errors, prefix }: {
         </div>
         <div className="space-y-2">
           {section.items.map((item, index) => (
-            <div key={index} className="grid gap-2 rounded-ny bg-surface-muted p-2.5 sm:grid-cols-[70px_1fr_2fr_auto] sm:items-end">
-              <TextField label="Icon" value={item.icon} onChange={(v) => setItem(index, { icon: v })} maxLength={8} placeholder="🍜" />
+            <div key={index} className="grid gap-2 rounded-ny bg-surface-muted p-2.5 sm:grid-cols-[130px_1fr_2fr_auto] sm:items-end">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-ink-hi">Icon</label>
+                <select value={item.icon} onChange={(e) => setItem(index, { icon: e.target.value })}
+                  className="w-full rounded-ny border border-line bg-surface px-2 py-2 text-sm focus:border-accent focus:outline-none">
+                  <option value="">None</option>
+                  {Object.entries(SITE_ICON_MAP).map(([key, entry]) => (
+                    <option key={key} value={key}>{entry.label}</option>
+                  ))}
+                  {item.icon && !SITE_ICON_MAP[item.icon] && <option value={item.icon}>{item.icon}</option>}
+                </select>
+              </div>
               <TextField label="Card title" value={item.title} onChange={(v) => setItem(index, { title: v })} maxLength={80} error={err(`items.${index}.title`)} />
               <TextField label="Text" value={item.text} onChange={(v) => setItem(index, { text: v })} maxLength={300} />
-              <SmallButton danger onClick={() => setItem(index, null)}>✕</SmallButton>
+              <SmallButton danger onClick={() => setItem(index, null)}><X aria-hidden className="size-3.5" /></SmallButton>
             </div>
           ))}
           {section.items.length < 6 && (
             <SmallButton onClick={() => onChange({ ...section, items: [...section.items, { icon: '', title: '', text: '' }] })}>+ Add card</SmallButton>
           )}
-          <p className="text-xs text-ink-label">Tip: an emoji makes a good icon — 🛵 🍜 💵 📍 ⭐</p>
         </div>
       </>
     );

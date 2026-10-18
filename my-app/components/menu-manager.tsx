@@ -6,6 +6,7 @@ import { ApiError, apiDelete, apiPatch, apiPost } from '@/lib/api';
 import { formatMoney } from '@/lib/format';
 import { ImageUpload } from '@/components/image-upload';
 import { ActionDialog } from '@/components/action-dialog';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 export interface MenuCategory {
   id: number;
@@ -83,8 +84,8 @@ export function MenuManager({ categories, items }: { categories: MenuCategory[];
 
       {totalItems > 0 && withPhotos < totalItems && (
         <p className="rounded-ny-card border border-accent-border bg-accent-soft px-4 py-3 text-sm text-accent-label">
-          📸 {withPhotos} of {totalItems} dishes have a photo. Dishes with photos get noticed far more — and half
-          your menu having photos counts toward your ranking.
+          {withPhotos} of {totalItems} dishes have a photo. Dishes with photos sell better, and photos on half
+          your menu count toward your ranking.
         </p>
       )}
 
@@ -129,8 +130,8 @@ export function MenuManager({ categories, items }: { categories: MenuCategory[];
 
                 {renaming !== category.id && (
                   <div className="ml-auto flex flex-wrap items-center gap-1">
-                    <IconButton label="Move up" disabled={busy || index === 0} onClick={() => move(index, -1)}>↑</IconButton>
-                    <IconButton label="Move down" disabled={busy || index === categories.length - 1} onClick={() => move(index, 1)}>↓</IconButton>
+                    <IconButton label="Move up" disabled={busy || index === 0} onClick={() => move(index, -1)}><ChevronUp aria-hidden className="size-4" /></IconButton>
+                    <IconButton label="Move down" disabled={busy || index === categories.length - 1} onClick={() => move(index, 1)}><ChevronDown aria-hidden className="size-4" /></IconButton>
                     <SmallButton disabled={busy} onClick={() => setRenaming(category.id)}>Rename</SmallButton>
                     <SmallButton
                       disabled={busy}

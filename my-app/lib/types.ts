@@ -29,6 +29,8 @@ export interface RestaurantSummary {
   isOpen: boolean;
   acceptsOrders: boolean;
   categories: string[];
+  /** Public average only; comments stay private to the restaurant. */
+  rating: { average: number; count: number } | null;
   distanceKm: number | null;
   delivery: DeliveryQuote | null;
   deliveryFrom: { minFeeMinor: number; maxSupportedKm: number } | null;

@@ -1,3 +1,5 @@
+import { can, getSession } from '@/lib/session';
+import { NoAccess } from '@/components/no-access';
 import { fetchTenant } from '@/lib/dashboard-api';
 import { ZoneEditor } from '@/components/zone-editor';
 import type { DeliveryZoneRule } from '@/lib/types';
@@ -6,6 +8,8 @@ export const metadata = { title: 'Delivery zones' };
 export const dynamic = 'force-dynamic';
 
 export default async function ZonesPage() {
+  const accessSession = await getSession();
+  if (!can(accessSession, 'SETTINGS')) return <NoAccess what="delivery zones" />;
   const zones = await fetchTenant<DeliveryZoneRule[]>('/restaurant/delivery-zones');
 
   return (

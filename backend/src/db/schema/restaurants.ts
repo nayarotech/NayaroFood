@@ -2,6 +2,7 @@ import { relations } from 'drizzle-orm';
 import {
   index,
   int,
+  json,
   mysqlEnum,
   mysqlTable,
   text,
@@ -82,6 +83,10 @@ export const restaurantUsers = mysqlTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     role: mysqlEnum('role', enumValues(RestaurantRole)).notNull().default(RestaurantRole.OWNER),
+    /** Granted by the owner to a manager; ignored for the owner (all) and riders (none). */
+    permissions: json('permissions').$type<string[]>(),
+    /** Switched off instead of deleted, so their order history keeps a name. */
+    isActive: int('is_active').notNull().default(1),
     ...timestamps(),
   },
   (t) => [

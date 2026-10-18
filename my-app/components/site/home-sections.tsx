@@ -1,6 +1,7 @@
 import type { HomeSection } from '@nayaro/shared';
 import { Markdown } from '@/components/site/markdown';
 import { SiteLink } from '@/components/site-footer';
+import { SiteIcon } from '@/components/site/site-icon';
 
 /** Homepage sections the Super Admin adds and orders under Site content. */
 export function HomeSections({ sections }: { sections: HomeSection[] }) {
@@ -36,7 +37,9 @@ function Features({ section }: { section: Extract<HomeSection, { type: 'features
         {section.items.map((item, index) => (
           <li key={`${item.title}-${index}`} className="rounded-ny-card border border-line bg-surface p-5 shadow-[var(--ny-shadow-card)]">
             {item.icon && (
-              <span aria-hidden className="grid size-11 place-items-center rounded-ny bg-accent-soft text-2xl">{item.icon}</span>
+              <span className="grid size-10 place-items-center rounded-ny bg-accent-soft text-accent-label">
+                <SiteIcon name={item.icon} className="size-5" />
+              </span>
             )}
             <h3 className="mt-3 font-display text-lg font-semibold tracking-tight">{item.title}</h3>
             {item.text && <p className="mt-1 text-sm text-ink-muted">{item.text}</p>}

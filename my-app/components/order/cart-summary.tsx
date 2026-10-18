@@ -90,7 +90,7 @@ export function CartSummary({
             Go to checkout
           </Link>
         )}
-        <p className="mt-2 text-center text-[11px] text-ink-label">Cash on delivery · no account needed</p>
+        <p className="mt-2 text-center text-[11px] text-ink-label">Cash on delivery</p>
       </div>
 
       {/* Phones: the cart lives in a bar along the bottom. */}
@@ -106,7 +106,7 @@ export function CartSummary({
             </span>
           ) : (
             <Link href={checkoutHref} className="rounded-ny bg-accent px-5 py-2.5 text-sm font-semibold text-on-accent shadow-[var(--ny-shadow-accent)]">
-              Checkout →
+              Checkout
             </Link>
           )}
         </div>

@@ -1,21 +1,17 @@
 import Link from 'next/link';
-import { FoodArt } from '@/components/food-art';
-import { formatDeliveryFee, formatDistance } from '@/lib/format';
+import type { Route } from 'next';
+import { Store } from 'lucide-react';
+import { formatDistance, formatMoney } from '@/lib/format';
+import { RatingChip } from '@/components/stars';
 import type { RestaurantSummary } from '@/lib/types';
 
-/**
- * One restaurant in the browse grid.
- *
- * The delivery fee is the loudest element on the card by design: it is the
- * number a customer is usually surprised by at checkout elsewhere, so it is
- * settled here, before they invest any time in a menu.
- */
+/** One restaurant in the browse grid: photo, name, rating, then what delivery costs you. */
 export function RestaurantCard({
   restaurant,
-  featured = false,
   locationQuery = '',
 }: {
   restaurant: RestaurantSummary;
+  /** Kept for callers that still pass it; every card is the same size now. */
   featured?: boolean;
   /** Carries the chosen delivery location through to the restaurant page. */
   locationQuery?: string;
@@ -23,132 +19,75 @@ export function RestaurantCard({
   const { delivery, deliveryFrom } = restaurant;
   const closed = !restaurant.isOpen || !restaurant.acceptsOrders;
   const tooFar = delivery !== null && !delivery.deliverable;
-  const dimmed = closed || tooFar;
+
+  const fee =
+    delivery === null
+      ? deliveryFrom
+        ? deliveryFrom.minFeeMinor === 0
+          ? { text: 'Free delivery nearby', tone: 'text-ink-muted' }
+          : { text: `Delivery from ${formatMoney(deliveryFrom.minFeeMinor)}`, tone: 'text-ink-muted' }
+        : null
+      : delivery.deliverable
+        ? delivery.feeMinor === 0
+          ? { text: 'Free delivery', tone: 'text-success font-medium' }
+          : { text: `${formatMoney(delivery.feeMinor)} delivery`, tone: 'text-ink-hi' }
+        : { text: 'Doesn’t deliver to you', tone: 'text-danger' };
 
   return (
     <Link
-      href={`/r/${restaurant.slug}${locationQuery}`}
-      className={`group relative flex flex-col overflow-hidden rounded-ny-card border border-line bg-surface transition-all duration-200 hover:-translate-y-1 hover:border-accent-border hover:shadow-[var(--ny-shadow-card-hover)] ${
-        featured ? 'sm:col-span-2 sm:flex-row' : ''
+      href={`/r/${restaurant.slug}${locationQuery}` as Route}
+      className={`group flex flex-col overflow-hidden rounded-ny-card border border-line bg-surface transition-shadow hover:shadow-[var(--ny-shadow-card-hover)] ${
+        tooFar ? 'opacity-70' : ''
       }`}
     >
-      <div
-        className={`relative shrink-0 overflow-hidden bg-surface-inset ${
-          featured ? 'h-40 sm:h-auto sm:w-2/5' : 'h-36'
-        }`}
-      >
+      <div className="relative aspect-[16/9] overflow-hidden bg-surface-inset">
         {restaurant.coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={restaurant.coverUrl}
             alt=""
             loading="lazy"
-            className={`size-full object-cover transition-transform duration-300 group-hover:scale-105 ${
-              dimmed ? 'opacity-55 grayscale' : ''
-            }`}
+            className={`size-full object-cover transition-transform duration-300 group-hover:scale-[1.03] ${closed ? 'grayscale' : ''}`}
           />
         ) : (
-          <FoodArt
-            seed={restaurant.slug}
-            category={restaurant.categories[0] ?? restaurant.name}
-            className={`size-full transition-transform duration-300 group-hover:scale-105 ${
-              dimmed ? 'opacity-55 grayscale' : ''
-            }`}
-          />
+          <div className="grid size-full place-items-center text-ink-label">
+            <Store aria-hidden className="size-8" strokeWidth={1.25} />
+          </div>
         )}
-
         {restaurant.logoUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={restaurant.logoUrl}
             alt=""
             loading="lazy"
-            className="absolute bottom-2.5 left-2.5 size-11 rounded-full border-2 border-white object-cover shadow-[var(--ny-shadow-card)]"
+            className="absolute bottom-2.5 left-2.5 size-10 rounded-full border-2 border-white object-cover shadow-sm"
           />
         )}
-
-        {/* The fee, stated up front. */}
-        <div className="absolute top-2.5 left-2.5">
-          {delivery === null ? (
-            deliveryFrom && (
-              <Chip tone="glass">
-                from {formatDeliveryFee(deliveryFrom.minFeeMinor)} delivery
-              </Chip>
-            )
-          ) : delivery.deliverable ? (
-            <Chip tone={delivery.feeMinor === 0 ? 'free' : 'accent'}>
-              {delivery.feeMinor === 0 ? 'FREE delivery' : `${formatDeliveryFee(delivery.feeMinor)} delivery`}
-            </Chip>
-          ) : (
-            <Chip tone="danger">Out of range</Chip>
-          )}
-        </div>
-
         {closed && (
-          <div className="absolute inset-0 grid place-items-center bg-[var(--ny-background)]/55">
-            <span className="rounded-ny-pill bg-surface px-3 py-1 text-xs font-semibold tracking-wide text-ink uppercase">
-              Closed
-            </span>
-          </div>
+          <span className="absolute top-2.5 left-2.5 rounded-ny bg-ink/80 px-2 py-0.5 text-xs font-medium text-white">
+            Closed
+          </span>
         )}
       </div>
 
-      <div className={`flex flex-1 flex-col gap-1.5 p-4 ${featured ? 'justify-center sm:p-6' : ''}`}>
-        <h3
-          className={`font-display leading-tight font-semibold tracking-tight ${
-            featured ? 'text-xl' : 'text-base'
-          }`}
-        >
-          {restaurant.name}
-        </h3>
-
-        {featured && restaurant.description && (
-          <p className="line-clamp-2 text-sm text-ink-muted">{restaurant.description}</p>
-        )}
-
+      <div className="flex flex-1 flex-col gap-1 p-3.5">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-display text-[15px] leading-snug font-semibold tracking-tight">{restaurant.name}</h3>
+          <RatingChip rating={restaurant.rating} />
+        </div>
         {restaurant.categories.length > 0 && (
-          <p className="truncate text-[13px] text-ink-subtle">
-            {restaurant.categories.slice(0, 4).join(' · ')}
-          </p>
+          <p className="truncate text-[13px] text-ink-muted">{restaurant.categories.slice(0, 4).join(', ')}</p>
         )}
-
-        <div className={`flex items-center gap-2 pt-2 text-xs text-ink-label ${featured ? '' : 'mt-auto'}`}>
-          {delivery !== null ? (
-            <span className="font-mono tabular-nums">{formatDistance(delivery.distanceKm)}</span>
-          ) : (
-            <span className="truncate">{restaurant.address}</span>
-          )}
-          {deliveryFrom && (
+        <p className="mt-auto flex items-center gap-1.5 pt-1.5 text-[13px]">
+          {fee && <span className={fee.tone}>{fee.text}</span>}
+          {delivery !== null && (
             <>
-              <span aria-hidden>·</span>
-              <span className="truncate">delivers to {deliveryFrom.maxSupportedKm} km</span>
+              {fee && <span aria-hidden className="text-ink-label">·</span>}
+              <span className="text-ink-muted tabular-nums">{formatDistance(delivery.distanceKm)}</span>
             </>
           )}
-        </div>
+        </p>
       </div>
     </Link>
-  );
-}
-
-function Chip({
-  tone,
-  children,
-}: {
-  tone: 'accent' | 'free' | 'danger' | 'glass';
-  children: React.ReactNode;
-}) {
-  const tones = {
-    accent: 'bg-accent text-on-accent',
-    free: 'bg-success text-white',
-    danger: 'bg-danger text-white',
-    glass: 'bg-surface/90 text-ink-muted backdrop-blur-sm',
-  } as const;
-
-  return (
-    <span
-      className={`inline-block rounded-ny-pill px-2.5 py-1 text-[11px] font-semibold tracking-wide shadow-[var(--ny-shadow-card)] ${tones[tone]}`}
-    >
-      {children}
-    </span>
   );
 }

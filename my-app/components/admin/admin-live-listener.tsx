@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useEventStream } from '@/lib/use-event-stream';
 import { LiveIndicator } from '@/components/live-order-listener';
 import { formatMoney } from '@/lib/format';
+import { ShoppingBag, Store, X } from 'lucide-react';
 
 interface FeedItem {
   key: string;
@@ -98,13 +99,13 @@ export function AdminLiveListener() {
                     item.tone === 'order' ? 'bg-accent text-on-accent' : 'bg-warning-soft text-warning'
                   }`}
                 >
-                  {item.tone === 'order' ? '₨' : '+'}
+                  {item.tone === 'order' ? <ShoppingBag className="size-4" /> : <Store className="size-4" />}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="font-display text-sm font-semibold tracking-tight">{item.title}</p>
                   <p className="mt-0.5 truncate text-xs text-ink-muted">{item.body}</p>
                   <Link href={item.href} className="mt-1.5 inline-block text-xs font-semibold text-accent-label hover:underline">
-                    Open →
+                    Open
                   </Link>
                 </div>
                 <button
@@ -113,7 +114,7 @@ export function AdminLiveListener() {
                   onClick={() => setFeed((current) => current.filter((i) => i.key !== item.key))}
                   className="text-ink-label transition-colors hover:text-ink"
                 >
-                  ✕
+                  <X aria-hidden className="size-4" />
                 </button>
               </div>
             </div>

@@ -62,6 +62,16 @@ const envSchema = z
     WHATSAPP_TWILIO_AUTH_TOKEN: z.string().optional(),
     WHATSAPP_TWILIO_FROM: z.string().optional(),
 
+    /**
+     * Email transport for sign-up and password-reset codes.
+     *   log    → prints the email (and code) to the server log — development only
+     *   resend → sends through Resend (https://resend.com)
+     */
+    EMAIL_PROVIDER: z.enum(['log', 'resend']).default('log'),
+    RESEND_API_KEY: z.string().trim().optional(),
+    /** Must be on a domain verified in Resend, e.g. "Nayaro Food <no-reply@yourdomain.com>". */
+    EMAIL_FROM: z.string().trim().default('Nayaro Food <onboarding@resend.dev>'),
+
     OTP_LENGTH: z.coerce.number().int().min(4).max(8).default(6),
     OTP_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10),
     OTP_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
@@ -126,8 +136,19 @@ const envSchema = z
         });
       }
     }
+    if (v.EMAIL_PROVIDER === 'resend' && !v.RESEND_API_KEY) {
+      ctx.addIssue({ code: 'custom', message: 'EMAIL_PROVIDER=resend requires RESEND_API_KEY.', path: ['RESEND_API_KEY'] });
+    }
+
     // The `log` provider prints codes to stdout — never acceptable in production.
     if (v.NODE_ENV === 'production') {
+      if (v.EMAIL_PROVIDER !== 'resend') {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Set EMAIL_PROVIDER=resend (with RESEND_API_KEY) in production — sign-up and password reset send codes by email.',
+          path: ['EMAIL_PROVIDER'],
+        });
+      }
       // Only matters once WhatsApp is switched on; while it is off nothing is sent.
       if (v.WHATSAPP_ENABLED && v.WHATSAPP_PROVIDER === 'log') {
         ctx.addIssue({

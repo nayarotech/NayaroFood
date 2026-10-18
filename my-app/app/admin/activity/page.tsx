@@ -66,6 +66,8 @@ export default async function AdminActivityPage({ searchParams }: PageProps<'/ad
             {result.items.map((entry) => {
               const orderLink =
                 entry.entityType === 'order' && entry.entityId ? (`/admin/orders/${entry.entityId}` as Route) : null;
+              const customerLink =
+                entry.entityType === 'customer' && entry.entityId ? (`/admin/customers/${entry.entityId}` as Route) : null;
               return (
                 <li key={entry.id} className="flex flex-wrap items-start gap-x-4 gap-y-1 px-5 py-3.5">
                   <div className="min-w-0 flex-1">
@@ -80,6 +82,14 @@ export default async function AdminActivityPage({ searchParams }: PageProps<'/ad
                           </Link>
                         </>
                       )}
+                      {customerLink && (
+                        <>
+                          {' '}
+                          <Link href={customerLink} className="font-medium text-accent-label hover:underline">
+                            {(entry.metadata as { name?: string } | null)?.name ?? 'customer'}
+                          </Link>
+                        </>
+                      )}
                       {orderLink && (
                         <>
                           {' '}·{' '}
@@ -91,7 +101,7 @@ export default async function AdminActivityPage({ searchParams }: PageProps<'/ad
                     </p>
                     {entry.metadata?.from && entry.metadata?.to && (
                       <p className="mt-0.5 text-xs text-ink-label">
-                        {entry.metadata.from.toLowerCase().replace(/_/g, ' ')} → {entry.metadata.to.toLowerCase().replace(/_/g, ' ')}
+                        {entry.metadata.from.toLowerCase().replace(/_/g, ' ')} to {entry.metadata.to.toLowerCase().replace(/_/g, ' ')}
                       </p>
                     )}
                     {entry.metadata?.reason && <p className="mt-0.5 text-sm text-ink-muted">“{entry.metadata.reason}”</p>}

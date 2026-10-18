@@ -1,8 +1,9 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { AsideList, AuthShell } from '@/components/auth-shell';
+import { AuthShell } from '@/components/auth-shell';
 import { LoginForm } from '@/components/login-form';
-import { getSession } from '@/lib/session';
 import { SilentSignIn } from '@/components/silent-sign-in';
+import { getSession, homeFor } from '@/lib/session';
 import { safeNext } from '@/lib/safe-next';
 
 export const metadata = { title: 'Sign in' };
@@ -12,23 +13,24 @@ export default async function LoginPage({ searchParams }: PageProps<'/login'>) {
   const next = (await searchParams).next;
   const nextPath = safeNext(Array.isArray(next) ? next[0] : next) ?? undefined;
 
-  // Someone already signed in has no business on the sign-in screen.
   const session = await getSession();
-  if (session) redirect(session.user.role === 'SUPER_ADMIN' ? '/admin' : '/dashboard');
+  if (session) redirect(homeFor(session.user.role));
 
   return (
     <AuthShell
       title="Sign in"
-      subtitle="Manage your menu, delivery zones and incoming orders."
-      aside={
-        <AsideList
-          heading="Your restaurant dashboard"
-          items={[
-            'Set delivery zones and fees by distance',
-            'Get new orders live, with sound and phone alerts',
-            'Track repeat customers and reward them',
-          ]}
-        />
+      subtitle={nextPath?.includes('/checkout') ? 'Sign in to place your order.' : 'Welcome back.'}
+      footer={
+        <>
+          New to Nayaro Food?{' '}
+          <Link href={(nextPath ? `/signup?next=${encodeURIComponent(nextPath)}` : '/signup') as '/signup'} className="font-semibold text-accent-label hover:underline">
+            Create an account
+          </Link>
+          <span className="mx-2 text-ink-label">·</span>
+          <Link href="/register" className="hover:text-ink">
+            List your restaurant
+          </Link>
+        </>
       }
     >
       <SilentSignIn next={nextPath}>

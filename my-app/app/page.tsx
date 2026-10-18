@@ -25,22 +25,15 @@ export default async function HomePage({ searchParams }: PageProps<'/'>) {
 
   return (
     <div>
-      <section className="relative overflow-hidden">
-        <div className="relative mx-auto grid max-w-6xl items-start gap-8 px-4 pt-10 pb-8 lg:grid-cols-[1.1fr_340px] lg:gap-12 lg:pt-14">
+      <section className="border-b border-line bg-surface">
+        <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-10 lg:grid-cols-[1.1fr_400px] lg:gap-12 lg:py-14">
           <div className="min-w-0">
-            {home.hero.badge && (
-              <span className="inline-flex items-center gap-1.5 rounded-ny-pill border border-accent-border bg-white px-3 py-1 text-xs font-medium text-accent-label shadow-[var(--ny-shadow-card)]">
-                <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-                {home.hero.badge}
-              </span>
-            )}
+            {home.hero.badge && <p className="text-sm font-medium text-accent-label">{home.hero.badge}</p>}
 
-            <h1 className="mt-5 max-w-[12ch] font-display text-[2.75rem] leading-[0.98] font-bold tracking-[-0.03em] text-ink sm:text-6xl">
+            <h1 className="mt-4 max-w-[14ch] font-display text-4xl leading-[1.05] font-bold tracking-tight text-ink sm:text-5xl">
               {home.hero.titleStart}{' '}
               {home.hero.titleHighlight && (
-                <span className="bg-gradient-to-br from-accent-bright to-accent-deep bg-clip-text text-transparent">
-                  {home.hero.titleHighlight}
-                </span>
+                <span className="text-accent">{home.hero.titleHighlight}</span>
               )}{' '}
               {home.hero.titleEnd}
             </h1>
@@ -55,20 +48,6 @@ export default async function HomePage({ searchParams }: PageProps<'/'>) {
               </Suspense>
             </div>
 
-            <dl className="mt-7 flex flex-wrap gap-x-8 gap-y-4 border-t border-line pt-5">
-              <div>
-                <dt className="text-xs text-ink-label">Delivery fee</dt>
-                <dd className="font-display text-xl font-bold tracking-tight">Shown up front</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-ink-label">Account needed</dt>
-                <dd className="font-display text-xl font-bold tracking-tight">No</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-ink-label">Payment</dt>
-                <dd className="font-display text-xl font-bold tracking-tight">Cash on delivery</dd>
-              </div>
-            </dl>
           </div>
 
           {mainPhoto && (
@@ -97,7 +76,7 @@ export default async function HomePage({ searchParams }: PageProps<'/'>) {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 pt-2 pb-10">
+      <section className="mx-auto max-w-6xl px-4 pt-8 pb-10">
         <Suspense key={`${query}-${lat}-${lng}`} fallback={<GridSkeleton />}>
           <RestaurantGrid query={query} lat={lat} lng={lng} />
         </Suspense>
@@ -170,7 +149,7 @@ async function RestaurantGrid({
         title="Couldn’t load restaurants"
         body={
           error instanceof ApiError && error.code === 'NETWORK_ERROR'
-            ? 'The API isn’t responding. Start it with `pnpm dev:api`.'
+            ? 'We can’t reach our servers right now. Please try again in a moment.'
             : 'Something went wrong on our side. Please try again.'
         }
       />
@@ -201,11 +180,14 @@ async function RestaurantGrid({
     return a.name.localeCompare(b.name);
   });
 
-  const cuisines = [...new Set(sorted.flatMap((r) => r.categories))].slice(0, 10);
+  // One chip per cuisine, whatever case each restaurant typed it in.
+  const cuisineMap = new Map<string, string>();
+  for (const name of sorted.flatMap((r) => r.categories)) {
+    const key = name.trim().toLowerCase();
+    if (key && !cuisineMap.has(key)) cuisineMap.set(key, name.trim().replace(/^./, (c) => c.toUpperCase()));
+  }
+  const cuisines = [...cuisineMap.values()].slice(0, 12);
   const deliverable = sorted.filter((r) => r.delivery?.deliverable).length;
-  // Featuring only pays off once there are enough cards to fill the row beneath.
-  const useFeatured = sorted.length >= 4;
-  const [first, ...rest] = sorted;
 
   return (
     <>
@@ -216,7 +198,7 @@ async function RestaurantGrid({
               <li key={cuisine}>
                 <Link
                   href={`/?q=${encodeURIComponent(cuisine)}${lat && lng ? `&lat=${lat}&lng=${lng}` : ''}`}
-                  className="block rounded-ny-pill border border-line bg-surface px-3.5 py-1.5 text-sm text-ink-muted transition-colors hover:border-accent-border hover:bg-accent-soft hover:text-accent-label"
+                  className="block rounded-ny-pill border border-line bg-surface px-3.5 py-1.5 text-sm text-ink-hi transition-colors hover:border-line-strong"
                 >
                   {cuisine}
                 </Link>
@@ -230,7 +212,7 @@ async function RestaurantGrid({
         <h2 className="font-display text-xl font-semibold tracking-tight">
           {query ? (
             <>
-              Serving <span className="text-accent">{query}</span>
+              Results for “{query}”
             </>
           ) : lat && lng ? (
             'Delivering to you'
@@ -245,37 +227,15 @@ async function RestaurantGrid({
               reach you
             </>
           ) : (
-            `${sorted.length} kitchen${sorted.length === 1 ? '' : 's'}`
+            `${sorted.length} restaurant${sorted.length === 1 ? '' : 's'}`
           )}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {useFeatured && first ? (
-          <>
-            <RestaurantCard
-              key={first.id}
-              restaurant={first}
-              locationQuery={locationSuffix}
-              featured
-            />
-            {rest.map((restaurant) => (
-              <RestaurantCard
-                key={restaurant.id}
-                restaurant={restaurant}
-                locationQuery={locationSuffix}
-              />
-            ))}
-          </>
-        ) : (
-          sorted.map((restaurant) => (
-            <RestaurantCard
-              key={restaurant.id}
-              restaurant={restaurant}
-              locationQuery={locationSuffix}
-            />
-          ))
-        )}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {sorted.map((restaurant) => (
+          <RestaurantCard key={restaurant.id} restaurant={restaurant} locationQuery={locationSuffix} />
+        ))}
       </div>
     </>
   );
@@ -283,14 +243,9 @@ async function RestaurantGrid({
 
 function GridSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {Array.from({ length: 6 }, (_, index) => (
-        <div
-          key={index}
-          className={`animate-pulse rounded-ny-card border border-line bg-surface-muted ${
-            index === 0 ? 'h-60 sm:col-span-2' : 'h-60'
-          }`}
-        />
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: 8 }, (_, index) => (
+        <div key={index} className="h-56 animate-pulse rounded-ny-card border border-line bg-surface-muted" />
       ))}
     </div>
   );

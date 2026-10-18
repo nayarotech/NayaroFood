@@ -90,8 +90,16 @@ or *Block* (`SUSPENDED`: hidden, no orders, owner locked out). Both need a reaso
 which the owner sees. Every admin action is written to `audit_logs` and shown
 under **Admin → Activity log**.
 
-**Customer orders and tracking.** Customers order without an account (cash on
-delivery). Each order gets a platform-wide tracking code (`NY-XXXX-XXXX`);
+**Accounts and roles.** Customers sign up (phone + email) and must be signed in to
+order. Restaurant owners add **managers** with exactly the permissions they choose
+(orders, riders, menu, customers, reviews, settings) and **riders**, who sign in by
+phone and see only the deliveries assigned to them at `/rider`. Restaurants and riders
+can report problem customers (no answer, last-minute cancellation …); a Super Admin
+reviews reports under Admin → Customers and can block a customer, which locks their
+account and their phone number. Customers rate delivered orders: only the average is
+public, comments go to the restaurant.
+
+**Customer orders and tracking.** Orders are cash on delivery. Each order gets a platform-wide tracking code (`NY-XXXX-XXXX`);
 `/orders/<code>` updates live as the restaurant moves the order along. A customer
 can cancel only while the order is still pending, and must give the phone number
 the order was placed with.
@@ -112,6 +120,14 @@ the admin inbox. Default pages are created on first boot.
 |---|---|---|
 | `WHATSAPP_ENABLED` | `false` | Turns on WhatsApp verification and order messages |
 | `PLATFORM_UTC_OFFSET` | `+05:45` | Defines a "day" in admin reports |
+| `EMAIL_PROVIDER` | `log` | `resend` in production; `log` prints emails to the server log |
+| `RESEND_API_KEY` | — | Resend API key (required when `EMAIL_PROVIDER=resend`) |
+| `EMAIL_FROM` | `onboarding@resend.dev` | Sender; must be on a domain verified in Resend |
+
+**Email codes.** Customers confirm their email with a 6-digit code before their
+account is created, and anyone with an email can reset a forgotten password with
+one. Codes are sent through Resend, expire after 10 minutes, allow 5 wrong tries,
+and only their hash is stored.
 
 ## Theme
 

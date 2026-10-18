@@ -44,8 +44,8 @@ export function PushToggle() {
             Phone &amp; desktop alerts
           </h2>
           <p className="mt-1 max-w-md text-sm text-ink-muted">
-            Get a notification the moment an order arrives — <strong>even when this dashboard
-            is closed</strong>. Install this site to your home screen for alerts on your phone.
+            Get notified about new orders even when this page is closed. On a phone, add this
+            site to your home screen first.
           </p>
         </div>
         {state !== 'loading' && state !== 'unsupported' && (

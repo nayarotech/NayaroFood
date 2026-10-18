@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { ApiError, apiPost } from '@/lib/api';
 
 export interface AdminRestaurant {
@@ -147,17 +148,17 @@ export function RankManager({ initial }: { initial: AdminRestaurant[] }) {
                 <RestaurantMeta restaurant={restaurant} />
                 <div className="flex shrink-0 gap-1">
                   <IconButton label="Move up" onClick={() => move(restaurant.id, -1)} disabled={index === 0}>
-                    ↑
+                    <ChevronUp aria-hidden className="size-4" />
                   </IconButton>
                   <IconButton
                     label="Move down"
                     onClick={() => move(restaurant.id, 1)}
                     disabled={index === pinned.length - 1}
                   >
-                    ↓
+                    <ChevronDown aria-hidden className="size-4" />
                   </IconButton>
                   <IconButton label="Unpin" onClick={() => togglePin(restaurant.id)}>
-                    ✕
+                    <X aria-hidden className="size-4" />
                   </IconButton>
                 </div>
               </li>

@@ -1,4 +1,4 @@
-import { index, mysqlEnum, mysqlTable, timestamp, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
+import { index, int, json, mysqlEnum, mysqlTable, timestamp, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
 import { UserRole, UserStatus, enumValues } from '@nayaro/shared';
 import { createdAt, fk, pk, timestamps } from './_shared.js';
 
@@ -11,7 +11,8 @@ export const users = mysqlTable(
   'users',
   {
     id: pk(),
-    email: varchar('email', { length: 190 }).notNull(),
+    /** Optional for riders, who sign in with their phone. Unique when present. */
+    email: varchar('email', { length: 190 }),
     /** bcrypt hash. Never selected into any API response. */
     passwordHash: varchar('password_hash', { length: 255 }).notNull(),
     name: varchar('name', { length: 120 }).notNull(),
@@ -55,3 +56,33 @@ export const refreshTokens = mysqlTable(
 
 export type UserRow = typeof users.$inferSelect;
 export type NewUserRow = typeof users.$inferInsert;
+
+/**
+ * One-time codes sent by email: confirming a new customer's address before
+ * the account exists, and resetting a forgotten password.
+ *
+ * Only the SHA-256 hash of the code is stored. For sign-up, the details the
+ * person typed (including their already-hashed password) wait in `payload`
+ * until the code comes back — no half-made account ever exists.
+ */
+export const emailCodes = mysqlTable(
+  'email_codes',
+  {
+    id: pk(),
+    purpose: mysqlEnum('purpose', ['SIGNUP', 'PASSWORD_RESET']).notNull(),
+    email: varchar('email', { length: 190 }).notNull(),
+    codeHash: varchar('code_hash', { length: 64 }).notNull(),
+    payload: json('payload'),
+    attempts: int('attempts').notNull().default(0),
+    maxAttempts: int('max_attempts').notNull().default(5),
+    expiresAt: timestamp('expires_at').notNull(),
+    consumedAt: timestamp('consumed_at'),
+    /** Set when a newer code for the same email and purpose replaces this one. */
+    invalidatedAt: timestamp('invalidated_at'),
+    requestIp: varchar('request_ip', { length: 45 }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('idx_email_codes_lookup').on(t.email, t.purpose, t.createdAt)],
+);
+
+export type EmailCodeRow = typeof emailCodes.$inferSelect;

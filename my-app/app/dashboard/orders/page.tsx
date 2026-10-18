@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { fetchPaged, fetchTenant, param, toQuery } from '@/lib/dashboard-api';
-import { OrderBoard, type DashboardOrder } from '@/components/order-board';
+import { OrderBoard, type DashboardOrder, type RiderOption } from '@/components/order-board';
+import { can, getSession } from '@/lib/session';
+import { NoAccess } from '@/components/no-access';
 import { Pagination } from '@/components/pagination';
 import { formatMoney } from '@/lib/format';
 
@@ -37,10 +39,16 @@ export default async function OrdersPage({ searchParams }: PageProps<'/dashboard
       ? `/restaurant/orders?perPage=100&sort=oldest&${OPEN.split(',').map((s) => `status=${s}`).join('&')}`
       : `/restaurant/orders${toQuery({ perPage: HISTORY_PAGE_SIZE, page, search })}`;
 
-  const [summary, orders] = await Promise.all([
+  const session = await getSession();
+  if (!can(session, 'ORDERS')) return <NoAccess what="orders" />;
+  const canAssign = can(session, 'RIDERS');
+
+  const [summary, orders, team] = await Promise.all([
     fetchTenant<Summary>('/restaurant/orders/summary'),
     fetchPaged<DashboardOrder>(listPath),
+    canAssign ? fetchTenant<(RiderOption & { role: string; isActive: boolean })[]>('/restaurant/team') : Promise.resolve(null),
   ]);
+  const riders = (team ?? []).filter((member) => member.role === 'RIDER' && member.isActive);
 
   const tab = (active: boolean) =>
     `rounded-ny-pill px-3.5 py-1.5 text-sm transition-colors ${
@@ -93,7 +101,7 @@ export default async function OrdersPage({ searchParams }: PageProps<'/dashboard
 
       {orders ? (
         <>
-          <OrderBoard initial={orders.items} view={view} />
+          <OrderBoard initial={orders.items} view={view} riders={riders} canAssign={canAssign} />
           {view === 'history' && (
             <Pagination
               basePath="/dashboard/orders"

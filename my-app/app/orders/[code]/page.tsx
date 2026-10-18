@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation';
 import { ApiError, apiGet } from '@/lib/api';
 import { OrderTracker, type TrackedOrder } from '@/components/order/order-tracker';
+import { getSession } from '@/lib/session';
+import { fetchTenant } from '@/lib/dashboard-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,9 +25,17 @@ export default async function TrackedOrderPage({ params, searchParams }: PagePro
   }
 
   const justPlaced = (await searchParams).placed === '1';
+
+  // Only the customer who placed the order is offered the review form.
+  const session = await getSession();
+  const mine =
+    session?.user.role === 'CUSTOMER'
+      ? await fetchTenant<{ review: { rating: number; comment: string } | null }>(`/customer/orders/${clean}`)
+      : null;
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 pb-16">
-      <OrderTracker initial={order} justPlaced={justPlaced} />
+      <OrderTracker initial={order} justPlaced={justPlaced} isOwner={mine !== null} review={mine?.review ?? null} />
     </div>
   );
 }

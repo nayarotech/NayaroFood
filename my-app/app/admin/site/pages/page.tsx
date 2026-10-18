@@ -3,6 +3,7 @@ import type { Route } from 'next';
 import { fetchAdmin } from '@/lib/dashboard-api';
 import { formatDateTime } from '@/lib/format';
 import { EmptyState } from '@/components/admin/page-header';
+import { ArrowUpRight } from 'lucide-react';
 
 export const metadata = { title: 'Pages · Site content' };
 export const dynamic = 'force-dynamic';
@@ -51,7 +52,7 @@ export default async function SitePagesList() {
               <div className="flex gap-2">
                 {page.isPublished && (
                   <Link href={`/${page.slug}` as Route} target="_blank" className="rounded-ny border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:border-accent-border">
-                    View ↗
+                    View <ArrowUpRight aria-hidden className="inline size-3.5" />
                   </Link>
                 )}
                 <Link href={`/admin/site/pages/${page.id}` as Route} className="rounded-ny border border-line px-3 py-1.5 text-xs font-medium text-ink-muted hover:border-accent-border hover:text-accent-label">

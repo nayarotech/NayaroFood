@@ -13,7 +13,7 @@ export const DEFAULT_HOME: HomeContent = {
     titleHighlight: 'before',
     titleEnd: 'you order.',
     subtitle:
-      'Order from local kitchens, pay cash at your door, and follow your order live. Share your location and we’ll show the real total up front — no account needed.',
+      'Order from restaurants near you, pay cash at your door, and follow your order live — from the kitchen to your door.',
   },
   photos: [
     { url: '/images/home/handoff.jpg', alt: 'A smiling customer receiving a food delivery at her door', label: '' },
@@ -32,9 +32,9 @@ export const DEFAULT_HOME: HomeContent = {
       title: 'How it works',
       subtitle: 'From craving to doorstep in three steps.',
       items: [
-        { icon: '📍', title: 'Share your location', text: 'See which kitchens deliver to you and exactly what delivery costs.' },
-        { icon: '🛒', title: 'Order without an account', text: 'Pick your dishes, add your address, and pay cash when it arrives.' },
-        { icon: '🛵', title: 'Track it live', text: 'Your tracking code shows every step, from accepted to delivered.' },
+        { icon: 'map-pin', title: 'Share your location', text: 'See which restaurants deliver to you and what delivery costs.' },
+        { icon: 'wallet', title: 'Pay cash on delivery', text: 'Order in a minute with your account. Pay when the food arrives.' },
+        { icon: 'bike', title: 'Track it live', text: 'Follow every step, from the kitchen to your door.' },
       ],
     },
     {
@@ -84,7 +84,7 @@ export const DEFAULT_PAGES: SitePageInput[] = [
 ## What makes us different
 
 - **The delivery fee is shown before you order.** Each restaurant sets its own fee by distance, and we calculate yours from your actual location.
-- **No account needed.** Order with your name and phone number, pay cash at your door.
+- **Simple ordering.** Create an account once, then order in a minute and pay cash at your door.
 - **Live tracking.** Every order gets a tracking code so you can follow it from the kitchen to your door.
 
 ## For restaurants

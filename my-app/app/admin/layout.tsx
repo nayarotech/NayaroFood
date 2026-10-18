@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/session';
+import { getSession, homeFor } from '@/lib/session';
 import { fetchAdmin } from '@/lib/dashboard-api';
 import { AdminSidebar } from '@/components/admin/admin-sidebar';
 import { AdminLiveListener } from '@/components/admin/admin-live-listener';
@@ -20,7 +20,7 @@ interface NavCounts {
 export default async function AdminLayout({ children }: LayoutProps<'/admin'>) {
   const session = await getSession();
   if (!session) redirect('/login?next=/admin');
-  if (session.user.role !== 'SUPER_ADMIN') redirect('/dashboard');
+  if (session.user.role !== 'SUPER_ADMIN') redirect(homeFor(session.user.role));
 
   const [stats, site] = await Promise.all([
     fetchAdmin<NavCounts>('/admin/stats'),

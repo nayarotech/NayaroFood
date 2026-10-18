@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useId } from 'react';
+import { ArrowUpRight } from 'lucide-react';
 
 const inputClass =
   'w-full rounded-ny border bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none';
@@ -152,7 +153,7 @@ export function SaveBar({
           </button>
         )}
         <Link href={viewHref as '/'} target="_blank" className="text-sm font-medium text-accent-label hover:underline">
-          View site ↗
+          View site <ArrowUpRight aria-hidden className="inline size-3.5" />
         </Link>
       </span>
     </div>

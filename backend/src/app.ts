@@ -18,6 +18,9 @@ import { zonesRouter } from './modules/zones/zones.routes.js';
 import { publicOrdersRouter, tenantOrdersRouter } from './modules/orders/orders.routes.js';
 import { uploadsRouter } from './modules/uploads/uploads.routes.js';
 import { publicSiteRouter } from './modules/site/site.routes.js';
+import { customerRouter } from './modules/customer/customer.routes.js';
+import { teamRouter } from './modules/team/team.routes.js';
+import { riderRouter } from './modules/rider/rider.routes.js';
 
 /**
  * Builds the Express application.
@@ -79,10 +82,13 @@ export function createApp(): Express {
   app.use('/api/v1/auth', authRouter);
   // Platform administration is mounted separately from the tenant surface.
   app.use('/api/v1/admin', adminRouter);
+  app.use('/api/v1/customer', customerRouter);
+  app.use('/api/v1/rider', riderRouter);
   app.use('/api/v1/restaurant', restaurantRouter);
   app.use('/api/v1/restaurant/menu', menuRouter);
   app.use('/api/v1/restaurant/delivery-zones', zonesRouter);
   app.use('/api/v1/restaurant/orders', tenantOrdersRouter);
+  app.use('/api/v1/restaurant/team', teamRouter);
   app.use('/api/v1/restaurant/uploads', uploadsRouter);
   app.use('/api/v1/public', publicOrdersRouter);
   app.use('/api/v1/public', publicSiteRouter);

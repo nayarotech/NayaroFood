@@ -85,6 +85,13 @@ export const orders = mysqlTable(
     /** Deduplicates double-submits; unique per restaurant when present. */
     idempotencyKey: varchar('idempotency_key', { length: 64 }),
 
+    /** The restaurant's rider delivering this order, if assigned. */
+    riderUserId: fk('rider_user_id').references(() => users.id, { onDelete: 'set null' }),
+    assignedAt: timestamp('assigned_at'),
+    pickedUpAt: timestamp('picked_up_at'),
+    /** The rider's own note about the delivery ("left at gate", "no answer"). */
+    deliveryNote: varchar('delivery_note', { length: 500 }),
+
     placedAt: timestamp('placed_at').defaultNow().notNull(),
     acceptedAt: timestamp('accepted_at'),
     readyAt: timestamp('ready_at'),
@@ -101,6 +108,7 @@ export const orders = mysqlTable(
     index('idx_orders_customer').on(t.customerId, t.placedAt),
     index('idx_orders_phone').on(t.customerPhone),
     index('idx_orders_platform_placed').on(t.placedAt),
+    index('idx_orders_rider').on(t.riderUserId, t.status),
   ],
 );
 
@@ -133,6 +141,35 @@ export const orderItems = mysqlTable(
     index('idx_order_items_tenant').on(t.restaurantId, t.foodItemId),
   ],
 );
+
+/**
+ * A customer's review of one delivered order. The rating is public only as a
+ * restaurant average; the comment is private to the restaurant.
+ */
+export const orderReviews = mysqlTable(
+  'order_reviews',
+  {
+    id: pk(),
+    orderId: fk('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    restaurantId: fk('restaurant_id')
+      .notNull()
+      .references(() => restaurants.id, { onDelete: 'cascade' }),
+    customerId: fk('customer_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    rating: int('rating').notNull(),
+    comment: varchar('comment', { length: 1000 }).notNull().default(''),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex('uq_order_reviews_order').on(t.orderId),
+    index('idx_order_reviews_restaurant').on(t.restaurantId, t.createdAt),
+  ],
+);
+
+export type OrderReviewRow = typeof orderReviews.$inferSelect;
 
 /** Append-only audit of every status change, including who made it. */
 export const orderStatusHistory = mysqlTable(

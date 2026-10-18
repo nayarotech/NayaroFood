@@ -122,3 +122,22 @@ describe('tracking codes', () => {
     expect(trackingCodeSchema.safeParse('NY7K3Q').success).toBe(false);
   });
 });
+
+describe('rider transitions', () => {
+  it('lets a rider pick up, deliver, or record a failed delivery', () => {
+    expect(canTransition(OrderStatus.READY, OrderStatus.OUT_FOR_DELIVERY, Actor.RIDER).ok).toBe(true);
+    expect(canTransition(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, Actor.RIDER).ok).toBe(true);
+    expect(canTransition(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED, Actor.RIDER, 'Customer unreachable').ok).toBe(true);
+  });
+
+  it('does not let a rider run the kitchen', () => {
+    expect(canTransition(OrderStatus.PENDING, OrderStatus.ACCEPTED, Actor.RIDER).ok).toBe(false);
+    expect(canTransition(OrderStatus.ACCEPTED, OrderStatus.PREPARING, Actor.RIDER).ok).toBe(false);
+    expect(canTransition(OrderStatus.READY, OrderStatus.CANCELLED, Actor.RIDER, 'x').ok).toBe(false);
+  });
+
+  it('still requires a reason for a failed delivery', () => {
+    const check = canTransition(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED, Actor.RIDER);
+    expect(check.ok).toBe(false);
+  });
+});

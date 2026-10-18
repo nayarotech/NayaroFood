@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { getSession } from '@/lib/session';
+import { getSession, homeFor } from '@/lib/session';
 import { fetchTenant } from '@/lib/dashboard-api';
 import { DashboardSidebar } from '@/components/dashboard-sidebar';
 import { RestaurantStatusPill } from '@/components/restaurant-status-pill';
@@ -13,7 +13,8 @@ export const dynamic = 'force-dynamic';
 export default async function DashboardLayout({ children }: LayoutProps<'/dashboard'>) {
   const session = await getSession();
   if (!session) redirect('/login?next=/dashboard');
-  if (session.user.role === 'SUPER_ADMIN') redirect('/admin');
+  // Each kind of account has its own home; the dashboard is for the restaurant team.
+  if (session.user.role !== 'RESTAURANT_ADMIN') redirect(homeFor(session.user.role));
 
   const restaurant = session.restaurant;
 
@@ -51,7 +52,11 @@ export default async function DashboardLayout({ children }: LayoutProps<'/dashbo
     );
   }
 
-  const summary = await fetchTenant<{ openOrders: number }>('/restaurant/orders/summary');
+  const permissions = restaurant?.permissions ?? [];
+  const isOwner = restaurant?.role === 'OWNER';
+  const summary = permissions.includes('ORDERS')
+    ? await fetchTenant<{ openOrders: number }>('/restaurant/orders/summary')
+    : null;
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-5">
@@ -63,7 +68,9 @@ export default async function DashboardLayout({ children }: LayoutProps<'/dashbo
             <p className="truncate font-display text-[15px] font-bold tracking-tight">
               {restaurant?.name ?? 'Your restaurant'}
             </p>
-            <p className="truncate text-xs text-ink-label">{session.user.email}</p>
+            <p className="truncate text-xs text-ink-label">
+              {session.user.name} · {isOwner ? 'Owner' : 'Manager'}
+            </p>
             {restaurant && (
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                 <RestaurantStatusPill status={restaurant.status} />
@@ -80,8 +87,8 @@ export default async function DashboardLayout({ children }: LayoutProps<'/dashbo
           </div>
 
           {/* Keeps the open dashboard in sync without a refresh; shows a Live pill here. */}
-          <LiveOrderListener />
-          <DashboardSidebar openOrders={summary?.openOrders ?? 0} />
+          {permissions.includes('ORDERS') && <LiveOrderListener />}
+          <DashboardSidebar openOrders={summary?.openOrders ?? 0} permissions={permissions} isOwner={isOwner} />
         </aside>
 
         <main className="min-w-0">

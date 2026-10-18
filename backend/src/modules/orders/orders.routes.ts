@@ -3,6 +3,10 @@ import { and, asc, desc, eq, gte, inArray, like, lte, or, sql } from 'drizzle-or
 import {
   Actor,
   OrderStatus,
+  RestaurantRole,
+  StaffPermission,
+  assignRiderSchema,
+  type AssignRiderInput,
   UserRole,
   fromDecimalString,
   idSchema,
@@ -23,14 +27,29 @@ import {
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
+  customers,
   orderItems,
+  orderReviews,
   orderStatusHistory,
   orders,
   restaurantSettings,
+  restaurantUsers,
   restaurants,
+  users,
 } from '../../db/schema/index.js';
-import { subscribeOrder } from '../realtime/events.js';
-import { authOf, requireAuth, requireRestaurant, tenantOf } from '../../http/middleware/auth.js';
+import { emitRealtime, emitToUser, subscribeOrder } from '../realtime/events.js';
+import { pushToUser } from '../../lib/push.js';
+import { flagsFor } from '../customer/remarks.service.js';
+import {
+  authOf,
+  customerOf,
+  optionalAuth,
+  requireAuth,
+  requireCustomer,
+  requirePermission,
+  requireRestaurant,
+  tenantOf,
+} from '../../http/middleware/auth.js';
 import { orderLimiter, publicReadLimiter } from '../../http/middleware/rate-limit.js';
 import {
   asyncHandler,
@@ -40,7 +59,7 @@ import {
   validatedParams,
   validatedQuery,
 } from '../../http/middleware/validate.js';
-import { notFound } from '../../http/errors.js';
+import { badRequest, conflict, notFound } from '../../http/errors.js';
 import { created, ok, paginated } from '../../http/respond.js';
 import { placeOrder, updateOrderStatus } from './orders.service.js';
 
@@ -50,12 +69,15 @@ import { placeOrder, updateOrderStatus } from './orders.service.js';
 
 export const publicOrdersRouter: Router = Router();
 
+/** Ordering needs a signed-in, unblocked customer account. */
 publicOrdersRouter.post(
   '/orders',
   orderLimiter,
+  requireAuth,
+  requireCustomer,
   validateBody(placeOrderSchema),
   asyncHandler(async (req, res) => {
-    created(res, await placeOrder(req.body as PlaceOrderInput));
+    created(res, await placeOrder(req.body as PlaceOrderInput, customerOf(req)));
   }),
 );
 
@@ -172,6 +194,7 @@ publicOrdersRouter.get(
 publicOrdersRouter.post(
   '/orders/code/:code/cancel',
   orderLimiter,
+  optionalAuth,
   validateParams(trackingCodeParamSchema),
   validateBody(customerCancelSchema),
   asyncHandler(async (req, res) => {
@@ -179,12 +202,21 @@ publicOrdersRouter.post(
     const { phone, reason } = req.body as CustomerCancelInput;
 
     const [order] = await db
-      .select({ id: orders.id, restaurantId: orders.restaurantId, customerPhone: orders.customerPhone })
+      .select({
+        id: orders.id,
+        restaurantId: orders.restaurantId,
+        customerPhone: orders.customerPhone,
+        ownerUserId: customers.userId,
+      })
       .from(orders)
+      .innerJoin(customers, eq(customers.id, orders.customerId))
       .where(eq(orders.trackingCode, code))
       .limit(1);
+
+    // The signed-in owner needs nothing else; anyone else must know the phone.
+    const isOwner = Boolean(order && req.auth && order.ownerUserId === req.auth.userId);
     // Same answer for "no such order" and "wrong phone", so neither leaks.
-    if (!order || order.customerPhone !== phone) {
+    if (!order || (!isOwner && order.customerPhone !== phone)) {
       throw notFound('No order matches that tracking code and phone number.', 'ORDER_NOT_FOUND');
     }
 
@@ -218,6 +250,12 @@ async function loadTracking(code: string) {
     .where(eq(orders.trackingCode, code))
     .limit(1);
   if (!row) throw notFound('No order found with that tracking code.', 'ORDER_NOT_FOUND');
+
+  // The rider's name and phone, only once the food is on its way.
+  const [rider] =
+    row.order.riderUserId && row.order.status === OrderStatus.OUT_FOR_DELIVERY
+      ? await db.select({ name: users.name, phone: users.phone }).from(users).where(eq(users.id, row.order.riderUserId)).limit(1)
+      : [];
 
   const order = row.order;
   const [items, history] = await Promise.all([
@@ -268,6 +306,7 @@ async function loadTracking(code: string) {
     },
     paymentMethod: order.paymentMethod,
     note: order.note,
+    rider: rider ? { name: rider.name, phone: rider.phone } : null,
     subtotalMinor: fromDecimalString(order.subtotal),
     deliveryFeeMinor: fromDecimalString(order.deliveryFee),
     totalMinor: fromDecimalString(order.total),
@@ -286,13 +325,15 @@ async function loadTracking(code: string) {
   };
 }
 
+const ASSIGNABLE: string[] = ['ACCEPTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'];
+
 /* ------------------------------------------------------------------ */
 /* Tenant: the restaurant's order dashboard                            */
 /* ------------------------------------------------------------------ */
 
 export const tenantOrdersRouter: Router = Router();
 
-tenantOrdersRouter.use(requireAuth, requireRestaurant);
+tenantOrdersRouter.use(requireAuth, requireRestaurant, requirePermission(StaffPermission.ORDERS));
 
 tenantOrdersRouter.get(
   '/',
@@ -341,6 +382,21 @@ tenantOrdersRouter.get(
       .offset((query.page - 1) * query.perPage);
 
     const itemsByOrder = new Map<number, { name: string; quantity: number }[]>();
+    const riderIds = [...new Set(rows.map((row) => row.riderUserId).filter((id): id is number => id !== null))];
+    const [flags, riders, reviews] = await Promise.all([
+      flagsFor(rows.map((row) => row.customerId)),
+      riderIds.length === 0
+        ? Promise.resolve([] as { id: number; name: string }[])
+        : db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, riderIds)),
+      rows.length === 0
+        ? Promise.resolve([] as { orderId: number; rating: number }[])
+        : db
+            .select({ orderId: orderReviews.orderId, rating: orderReviews.rating })
+            .from(orderReviews)
+            .where(inArray(orderReviews.orderId, rows.map((row) => row.id))),
+    ]);
+    const riderNames = new Map(riders.map((rider) => [rider.id, rider.name]));
+    const ratings = new Map(reviews.map((review) => [review.orderId, review.rating]));
     if (rows.length > 0) {
       const items = await db
         .select({ orderId: orderItems.orderId, name: orderItems.nameSnapshot, quantity: orderItems.quantity })
@@ -370,6 +426,13 @@ tenantOrdersRouter.get(
         totalMinor: fromDecimalString(row.total),
         note: row.note,
         items: itemsByOrder.get(row.id) ?? [],
+        customerId: row.customerId,
+        // Platform-wide reports, so staff can think twice before accepting.
+        customerReports: flags.get(row.customerId)?.reports ?? 0,
+        customerBlocked: flags.get(row.customerId)?.blocked ?? false,
+        rider: row.riderUserId ? { id: row.riderUserId, name: riderNames.get(row.riderUserId) ?? 'Rider' } : null,
+        deliveryNote: row.deliveryNote,
+        rating: ratings.get(row.id) ?? null,
       })),
       { page: query.page, perPage: query.perPage, total: Number(count) },
     );
@@ -422,6 +485,70 @@ tenantOrdersRouter.get(
       /** Every order still waiting for accept/reject, whatever day it arrived. */
       pendingNow: Number(live?.pendingNow ?? 0),
     });
+  }),
+);
+
+/**
+ * Assign an order to one of this restaurant's riders (or un-assign with null).
+ * The rider gets it on their dashboard and phone straight away.
+ */
+tenantOrdersRouter.patch(
+  '/:id/rider',
+  requirePermission(StaffPermission.RIDERS),
+  validateParams(z.object({ id: idSchema })),
+  validateBody(assignRiderSchema),
+  asyncHandler(async (req, res) => {
+    const restaurantId = tenantOf(req);
+    const { id } = validatedParams<{ id: number }>(res);
+    const { riderId } = req.body as AssignRiderInput;
+
+    const [order] = await db
+      .select({ id: orders.id, status: orders.status, orderNumber: orders.orderNumber, riderUserId: orders.riderUserId })
+      .from(orders)
+      .where(and(eq(orders.id, id), eq(orders.restaurantId, restaurantId)))
+      .limit(1);
+    if (!order) throw notFound('Order not found.', 'ORDER_NOT_FOUND');
+    if (!ASSIGNABLE.includes(order.status)) {
+      throw conflict('Only accepted orders that haven’t been delivered can be assigned.', 'ORDER_NOT_ASSIGNABLE');
+    }
+
+    if (riderId !== null) {
+      const [rider] = await db
+        .select({ id: restaurantUsers.userId })
+        .from(restaurantUsers)
+        .where(
+          and(
+            eq(restaurantUsers.restaurantId, restaurantId),
+            eq(restaurantUsers.userId, riderId),
+            eq(restaurantUsers.role, RestaurantRole.RIDER),
+            eq(restaurantUsers.isActive, 1),
+          ),
+        )
+        .limit(1);
+      if (!rider) throw badRequest('That rider isn’t active at your restaurant.', 'RIDER_NOT_FOUND');
+    }
+
+    await db
+      .update(orders)
+      .set({ riderUserId: riderId, assignedAt: riderId === null ? null : new Date() })
+      .where(eq(orders.id, order.id));
+
+    emitRealtime({ type: 'order.assigned', restaurantId, orderId: order.id, riderUserId: riderId });
+    if (order.riderUserId && order.riderUserId !== riderId) {
+      emitToUser(order.riderUserId, { type: 'order.unassigned', orderId: order.id });
+    }
+    if (riderId !== null) {
+      emitToUser(riderId, { type: 'order.assigned', orderId: order.id });
+      void pushToUser(riderId, {
+        title: `Delivery #${order.orderNumber} assigned to you`,
+        body: 'Open the rider app for the address and items.',
+        url: '/rider',
+        tag: `rider-order-${order.id}`,
+        orderId: order.id,
+      });
+    }
+
+    ok(res, { id: order.id, riderId });
   }),
 );
 

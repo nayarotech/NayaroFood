@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { and, asc, eq } from 'drizzle-orm';
 import {
+  StaffPermission,
   createDeliveryZoneSchema,
   fromDecimalString,
   idSchema,
@@ -16,7 +17,8 @@ import {
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { deliveryZones } from '../../db/schema/index.js';
-import { requireAuth, requireRestaurant, tenantOf } from '../../http/middleware/auth.js';
+import { requireAuth, requirePermission,
+  requireRestaurant, tenantOf } from '../../http/middleware/auth.js';
 import {
   asyncHandler,
   validateBody,
@@ -37,7 +39,7 @@ import { recomputeRanking } from '../ranking/ranking.service.js';
  */
 export const zonesRouter: Router = Router();
 
-zonesRouter.use(requireAuth, requireRestaurant);
+zonesRouter.use(requireAuth, requireRestaurant, requirePermission(StaffPermission.SETTINGS));
 
 const idParam = z.object({ id: idSchema });
 

@@ -3,6 +3,7 @@ import type { Route } from 'next';
 import { notFound } from 'next/navigation';
 import { fetchAdmin } from '@/lib/dashboard-api';
 import { PageEditor, type EditablePage } from '@/components/admin/site/page-editor';
+import { ChevronLeft } from 'lucide-react';
 
 export const metadata = { title: 'Edit page · Site content' };
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,7 @@ export default async function EditSitePage({ params }: PageProps<'/admin/site/pa
   if (!page) notFound();
   return (
     <div>
-      <Link href={'/admin/site/pages' as Route} className="mb-3 inline-block text-sm text-ink-muted hover:text-accent-label">← All pages</Link>
+      <Link href={'/admin/site/pages' as Route} className="mb-3 inline-flex items-center gap-1 text-sm text-ink-muted hover:text-accent-label"><ChevronLeft aria-hidden className="size-4" /> All pages</Link>
       <PageEditor key={page.id} initial={page} />
     </div>
   );

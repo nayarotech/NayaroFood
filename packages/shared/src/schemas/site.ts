@@ -37,8 +37,13 @@ export type SitePhoto = z.infer<typeof sitePhotoSchema>;
 
 /* ---------------- homepage ---------------- */
 
+/** Icon names the homepage can render. Anything else is shown as plain text. */
+export const SITE_ICONS = [
+  'map-pin', 'wallet', 'bike', 'clock', 'star', 'shield', 'utensils', 'phone', 'bag', 'store', 'heart', 'leaf',
+] as const;
+
 const featureItemSchema = z.object({
-  icon: short(8).default(''),
+  icon: short(20).default(''),
   title: short(80).min(1),
   text: short(300).default(''),
 });

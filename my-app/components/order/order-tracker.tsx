@@ -8,6 +8,9 @@ import { useEventStream } from '@/lib/use-event-stream';
 import { loadCustomer } from '@/lib/cart';
 import { formatDateTime, formatDistance, formatMoney } from '@/lib/format';
 import { ActionDialog } from '@/components/action-dialog';
+import { ReviewDialog } from '@/components/account/review-dialog';
+import { Stars } from '@/components/stars';
+import { Bike, ChefHat, CircleCheck, CircleX, Package, Phone, ReceiptText, type LucideIcon } from 'lucide-react';
 
 type Status = 'PENDING' | 'ACCEPTED' | 'PREPARING' | 'READY' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'REJECTED' | 'CANCELLED';
 
@@ -23,6 +26,7 @@ export interface TrackedOrder {
   cancelledReason: string | null;
   restaurant: { name: string; slug: string; phone: string; address: string };
   customer: { name: string; phone: string };
+  rider: { name: string; phone: string | null } | null;
   delivery: { address: string; landmark: string | null; distanceKm: number };
   note: string | null;
   subtotalMinor: number;
@@ -41,21 +45,33 @@ const STEPS: { status: Status; label: string }[] = [
   { status: 'DELIVERED', label: 'Delivered' },
 ];
 
-const HEADLINE: Record<Status, { title: string; body: string; icon: string }> = {
-  PENDING: { title: 'Waiting for the restaurant', body: 'Your order has been sent. The restaurant will accept it shortly.', icon: '🧾' },
-  ACCEPTED: { title: 'Order accepted', body: 'The restaurant has your order and will start cooking soon.', icon: '👍' },
-  PREPARING: { title: 'Being prepared', body: 'Your food is being cooked right now.', icon: '🍳' },
-  READY: { title: 'Ready — waiting for the rider', body: 'Your food is packed and about to leave.', icon: '📦' },
-  OUT_FOR_DELIVERY: { title: 'On the way to you', body: 'The rider is heading to your address. Keep your phone nearby.', icon: '🛵' },
-  DELIVERED: { title: 'Delivered — enjoy your meal!', body: 'Thanks for ordering with Nayaro Food.', icon: '🎉' },
-  REJECTED: { title: 'The restaurant couldn’t take this order', body: 'You haven’t been charged — orders are paid on delivery.', icon: '😔' },
-  CANCELLED: { title: 'Order cancelled', body: 'You haven’t been charged — orders are paid on delivery.', icon: '✕' },
+const HEADLINE: Record<Status, { title: string; body: string; icon: LucideIcon }> = {
+  PENDING: { title: 'Waiting for the restaurant', body: 'Your order has been sent. The restaurant will confirm it shortly.', icon: ReceiptText },
+  ACCEPTED: { title: 'Order confirmed', body: 'The restaurant has your order and will start cooking soon.', icon: CircleCheck },
+  PREPARING: { title: 'Being prepared', body: 'Your food is being cooked.', icon: ChefHat },
+  READY: { title: 'Ready for pick-up', body: 'Your food is packed and waiting for the rider.', icon: Package },
+  OUT_FOR_DELIVERY: { title: 'On the way', body: 'Keep your phone nearby — the rider may call when they arrive.', icon: Bike },
+  DELIVERED: { title: 'Delivered', body: 'Enjoy your meal.', icon: CircleCheck },
+  REJECTED: { title: 'The restaurant couldn’t take this order', body: 'You haven’t been charged — orders are paid on delivery.', icon: CircleX },
+  CANCELLED: { title: 'Order cancelled', body: 'You haven’t been charged — orders are paid on delivery.', icon: CircleX },
 };
 
 const TIME = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kathmandu' });
 const prettyCode = (code: string) => `${code.slice(0, 2)}-${code.slice(2, 6)}-${code.slice(6)}`;
 
-export function OrderTracker({ initial, justPlaced }: { initial: TrackedOrder; justPlaced: boolean }) {
+export function OrderTracker({
+  initial,
+  justPlaced,
+  isOwner = false,
+  review = null,
+}: {
+  initial: TrackedOrder;
+  justPlaced: boolean;
+  /** The signed-in customer placed this order (can review, cancel without phone). */
+  isOwner?: boolean;
+  review?: { rating: number; comment: string } | null;
+}) {
+  const [reviewing, setReviewing] = useState(false);
   const [order, setOrder] = useState(initial);
   const [copied, setCopied] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -104,7 +120,10 @@ export function OrderTracker({ initial, justPlaced }: { initial: TrackedOrder; j
   }
 
   async function cancel(reason: string | undefined) {
-    const phone = loadCustomer()?.phone ?? (document.getElementById('cancel-phone') as HTMLInputElement | null)?.value ?? '';
+    // The signed-in owner needs no phone; anyone else proves it with the order's phone.
+    const phone = isOwner
+      ? undefined
+      : loadCustomer()?.phone ?? (document.getElementById('cancel-phone') as HTMLInputElement | null)?.value ?? '';
     setCancelBusy(true);
     setCancelError(null);
     try {
@@ -122,7 +141,7 @@ export function OrderTracker({ initial, justPlaced }: { initial: TrackedOrder; j
 
       {justPlaced && (
         <div className="mb-5 rounded-ny-card border border-success/30 bg-success-soft px-4 py-3 text-sm text-success">
-          <p className="font-semibold">Your order is placed! 🎉</p>
+          <p className="font-semibold">Order placed</p>
           <p className="mt-0.5">Keep this page open, or save your tracking code to check back any time.</p>
         </div>
       )}
@@ -143,7 +162,7 @@ export function OrderTracker({ initial, justPlaced }: { initial: TrackedOrder; j
         <div className="flex gap-2">
           <button type="button" onClick={share}
             className="rounded-ny border border-line bg-surface px-3.5 py-2 text-sm font-medium text-ink-muted hover:border-accent-border hover:text-accent-label">
-            {copied ? 'Link copied ✓' : 'Share tracking link'}
+            {copied ? 'Link copied' : 'Share tracking link'}
           </button>
           <a href={`tel:${order.restaurant.phone}`}
             className="rounded-ny bg-accent px-3.5 py-2 text-sm font-semibold text-on-accent hover:bg-accent-hover">
@@ -156,7 +175,7 @@ export function OrderTracker({ initial, justPlaced }: { initial: TrackedOrder; j
       <section className={`mt-6 rounded-ny-card border p-5 ${failed ? 'border-danger/30 bg-danger-soft' : 'border-accent-border bg-surface shadow-[var(--ny-shadow-card)]'}`}>
         <div className="flex items-start gap-4">
           <span aria-hidden className={`grid size-12 shrink-0 place-items-center rounded-full text-2xl ${failed ? 'bg-surface' : 'bg-accent-soft'}`}>
-            {headline.icon}
+            <headline.icon className="size-6" strokeWidth={1.75} />
           </span>
           <div className="min-w-0">
             <h1 className={`font-display text-xl font-bold tracking-tight ${failed ? 'text-danger' : ''}`} aria-live="polite">
@@ -197,6 +216,51 @@ export function OrderTracker({ initial, justPlaced }: { initial: TrackedOrder; j
           </button>
         )}
       </section>
+
+      {order.rider && order.status === 'OUT_FOR_DELIVERY' && (
+        <section className="mt-5 flex items-center gap-3 rounded-ny-card border border-line bg-surface p-4">
+          <span className="grid size-10 place-items-center rounded-full bg-accent-soft text-accent-label">
+            <Bike aria-hidden className="size-5" strokeWidth={1.75} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-ink-label">Your rider</p>
+            <p className="font-medium">{order.rider.name}</p>
+          </div>
+          {order.rider.phone && (
+            <a href={`tel:${order.rider.phone}`}
+              className="inline-flex items-center gap-1.5 rounded-ny border border-line px-3 py-2 text-sm font-medium hover:border-line-strong">
+              <Phone aria-hidden className="size-4" /> Call
+            </a>
+          )}
+        </section>
+      )}
+
+      {isOwner && order.status === 'DELIVERED' && (
+        <section className="mt-5 flex flex-wrap items-center gap-3 rounded-ny-card border border-line bg-surface p-4">
+          <div className="min-w-0 flex-1">
+            {review ? (
+              <>
+                <p className="text-sm font-medium">Your rating</p>
+                <Stars value={review.rating} size={16} className="mt-1" />
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium">How was your order?</p>
+                <p className="text-xs text-ink-muted">Your rating helps other customers. Comments go only to the restaurant.</p>
+              </>
+            )}
+          </div>
+          <button type="button" onClick={() => setReviewing(true)}
+            className={review
+              ? 'rounded-ny border border-line px-3 py-2 text-sm font-medium hover:border-line-strong'
+              : 'rounded-ny bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-hover'}>
+            {review ? 'Edit review' : 'Rate this order'}
+          </button>
+        </section>
+      )}
+      {reviewing && (
+        <ReviewDialog code={order.trackingCode} restaurant={order.restaurant.name} existing={review} onClose={() => setReviewing(false)} />
+      )}
 
       <div className="mt-5 grid gap-5 sm:grid-cols-2">
         <section className="rounded-ny-card border border-line bg-surface p-5">
@@ -239,7 +303,7 @@ export function OrderTracker({ initial, justPlaced }: { initial: TrackedOrder; j
         description={
           <>
             <p>You can cancel until the restaurant accepts it.</p>
-            {!loadCustomer()?.phone && (
+            {!isOwner && !loadCustomer()?.phone && (
               <label className="mt-3 block text-sm">
                 <span className="mb-1 block font-medium text-ink-hi">Phone you ordered with</span>
                 <input id="cancel-phone" type="tel" placeholder="98XXXXXXXX"

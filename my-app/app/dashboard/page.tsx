@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
-import Link from 'next/link';
 import { API_URL } from '@/lib/api';
 import { getSession } from '@/lib/session';
 import { ScoreBar } from '@/components/score-bar';
@@ -54,7 +53,7 @@ export default async function DashboardPage() {
           <h1 className="font-display text-2xl font-bold tracking-tight">
             {restaurant?.name ?? 'Your restaurant'}
           </h1>
-          <p className="mt-1 text-sm text-ink-muted">Signed in as {session.user.email}</p>
+          <p className="mt-1 text-sm text-ink-muted">Signed in as {session.user.name}</p>
         </div>
         {restaurant && <RestaurantStatusPill status={restaurant.status} />}
       </header>
@@ -79,8 +78,7 @@ export default async function DashboardPage() {
               </span>
             </div>
             <p className="mt-1 mb-5 text-sm text-ink-muted">
-              This decides where you appear in search and on the homepage. Every part of it is
-              shown below — nothing is hidden, and placement is never sold.
+              Decides where you appear in search and on the homepage.
             </p>
 
             <div className="space-y-4">
@@ -151,16 +149,10 @@ export default async function DashboardPage() {
         </div>
       ) : (
         <p className="mt-6 rounded-ny-card border border-dashed border-line-strong bg-surface p-8 text-center text-sm text-ink-muted">
-          Couldn&rsquo;t load your ranking. Is the API running?
+          Couldn&rsquo;t load your visibility score. Try again in a moment.
         </p>
       )}
 
-      <p className="mt-8 text-sm text-ink-label">
-        Menu, delivery zones and order management are the next modules.{' '}
-        <Link href="/" className="text-accent-label hover:text-accent-hover">
-          Browse the platform
-        </Link>
-      </p>
     </div>
   );
 }

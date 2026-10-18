@@ -22,7 +22,9 @@ export type RealtimeEvent =
   | { type: 'order.status'; restaurantId: number; orderId: number; status: string }
   /** The platform changed this restaurant's status — its dashboard must re-render. */
   | { type: 'restaurant.status'; restaurantId: number; status: string; reason: string | null }
-  | { type: 'restaurant.registered'; restaurantId: number; name: string };
+  | { type: 'restaurant.registered'; restaurantId: number; name: string }
+  /** An order was assigned to (or taken away from) a rider. */
+  | { type: 'order.assigned'; restaurantId: number; orderId: number; riderUserId: number | null };
 
 const bus = new EventEmitter();
 // One listener per open dashboard tab; the default cap of 10 is far too low.
@@ -33,6 +35,17 @@ const channel = (restaurantId: number): string => `restaurant:${restaurantId}`;
 const PLATFORM_CHANNEL = 'platform';
 
 const orderChannel = (orderId: number): string => `order:${orderId}`;
+const userChannel = (userId: number): string => `user:${userId}`;
+
+/** Something for one person only — e.g. a rider's newly assigned delivery. */
+export function emitToUser(userId: number, event: { type: string; [key: string]: unknown }): void {
+  bus.emit(userChannel(userId), event);
+}
+
+/** A rider's private stream: their assignments and their orders' status changes. */
+export function subscribeUser(userId: number, res: Response): () => void {
+  return attach(userChannel(userId), res, { userId });
+}
 
 export function emitRealtime(event: RealtimeEvent): void {
   bus.emit(channel(event.restaurantId), event);

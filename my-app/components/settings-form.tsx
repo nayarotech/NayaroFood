@@ -24,7 +24,7 @@ export interface RestaurantOverview {
 
 export interface AccountDetails {
   name: string;
-  email: string;
+  email: string | null;
   phone: string | null;
 }
 
@@ -288,7 +288,7 @@ function LocationCard({ overview }: { overview: RestaurantOverview }) {
               rel="noreferrer"
               className="font-medium text-accent-label hover:underline"
             >
-              Open in Google Maps ↗
+              Open in Google Maps
             </a>
           </div>
         </div>
@@ -514,7 +514,7 @@ function AccountCard({ account }: { account: AccountDetails }) {
           <Field label="Your name" name="accountName" defaultValue={account.name} required error={fields.accountName} />
           <Field label="Your phone" name="accountPhone" type="tel" defaultValue={account.phone ?? ''} error={fields.accountPhone} />
         </div>
-        <Field label="Sign-in email" name="accountEmail" value={account.email} readOnly disabled />
+        <Field label="Sign-in email" name="accountEmail" value={account.email ?? '—'} readOnly disabled />
         <PrimaryButton busy={busy}>Save my details</PrimaryButton>
       </form>
     </Card>

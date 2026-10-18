@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm';
-import { index, int, mysqlTable, timestamp, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
+import { index, int, mysqlEnum, mysqlTable, timestamp, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
+import { CustomerRemarkReason, enumValues } from '@nayaro/shared';
 import { coordinate, fk, money, pk, timestamps } from './_shared.js';
 import { restaurants } from './restaurants.js';
 import { users } from './users.js';
@@ -20,11 +21,50 @@ export const customers = mysqlTable(
     phone: varchar('phone', { length: 20 }).notNull(),
     name: varchar('name', { length: 120 }).notNull(),
     email: varchar('email', { length: 190 }),
-    /** Reserved for when customer accounts land; null for every guest order. */
+    /** The customer's sign-in account. Null only for guest orders placed before accounts existed. */
     userId: fk('user_id').references(() => users.id, { onDelete: 'set null' }),
+    /**
+     * Platform-wide block, set only by a Super Admin. Blocks the phone number
+     * itself, so the person cannot simply sign up again with it.
+     */
+    isBlocked: int('is_blocked').notNull().default(0),
+    blockedReason: varchar('blocked_reason', { length: 300 }),
+    blockedAt: timestamp('blocked_at'),
+    blockedByUserId: fk('blocked_by_user_id').references(() => users.id, { onDelete: 'set null' }),
     ...timestamps(),
   },
-  (t) => [uniqueIndex('uq_customers_phone').on(t.phone), index('idx_customers_user').on(t.userId)],
+  (t) => [
+    uniqueIndex('uq_customers_phone').on(t.phone),
+    uniqueIndex('uq_customers_user').on(t.userId),
+    index('idx_customers_blocked').on(t.isBlocked),
+  ],
+);
+
+/**
+ * Incident reports a restaurant files about a customer — no answer at the
+ * door, last-minute cancellation, fake address … Visible to the restaurant
+ * that wrote them and to the Super Admin, who decides whether to block.
+ */
+export const customerRemarks = mysqlTable(
+  'customer_remarks',
+  {
+    id: pk(),
+    customerId: fk('customer_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    restaurantId: fk('restaurant_id')
+      .notNull()
+      .references(() => restaurants.id, { onDelete: 'cascade' }),
+    orderId: fk('order_id'),
+    reason: mysqlEnum('reason', enumValues(CustomerRemarkReason)).notNull(),
+    note: varchar('note', { length: 500 }).notNull().default(''),
+    createdByUserId: fk('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [
+    index('idx_customer_remarks_customer').on(t.customerId, t.createdAt),
+    index('idx_customer_remarks_tenant').on(t.restaurantId, t.customerId),
+  ],
 );
 
 /**
@@ -106,4 +146,5 @@ export const customerAddressesRelations = relations(customerAddresses, ({ one })
 }));
 
 export type CustomerRow = typeof customers.$inferSelect;
+export type CustomerRemarkRow = typeof customerRemarks.$inferSelect;
 export type RestaurantCustomerRow = typeof restaurantCustomers.$inferSelect;

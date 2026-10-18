@@ -31,7 +31,7 @@ export default async function MessagesPage({ searchParams }: PageProps<'/admin/s
       {!result ? (
         <EmptyState>Couldn&rsquo;t load messages.</EmptyState>
       ) : result.items.length === 0 ? (
-        <EmptyState>{status ? 'No unread messages. 🎉' : 'No messages yet.'}</EmptyState>
+        <EmptyState>{status ? 'No unread messages.' : 'No messages yet.'}</EmptyState>
       ) : (
         <>
           <MessageInbox messages={result.items} />

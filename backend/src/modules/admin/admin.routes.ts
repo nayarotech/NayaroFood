@@ -13,6 +13,10 @@ import {
   paginationSchema,
   searchSchema,
   updateOrderStatusSchema,
+  UserStatus,
+  adminCustomerListSchema,
+  setCustomerBlockSchema,
+  type SetCustomerBlockInput,
   type AdminUpdateRestaurantStatusInput,
   type UpdateOrderStatusInput,
 } from '@nayaro/shared';
@@ -21,11 +25,13 @@ import { db } from '../../db/client.js';
 import {
   auditLogs,
   categories,
+  customerRemarks,
   customers,
   deliveryZones,
   foodItems,
   notificationLogs,
   orderItems,
+  orderReviews,
   orderStatusHistory,
   orders,
   restaurantRankings,
@@ -49,6 +55,8 @@ import { collectSignals, recomputeAllRankings, recomputeRanking } from '../ranki
 import { emitRealtime, subscribePlatform } from '../realtime/events.js';
 import { updateOrderStatus } from '../orders/orders.service.js';
 import { adminSiteRouter } from '../site/site.routes.js';
+import { revokeAllSessions } from '../auth/auth.service.js';
+import { alias } from 'drizzle-orm/mysql-core';
 
 /**
  * Platform administration. Mounted behind requireSuperAdmin, deliberately
@@ -911,16 +919,26 @@ adminRouter.patch(
 /* Customers                                                           */
 /* ------------------------------------------------------------------ */
 
-const customerListSchema = paginationSchema.extend({ search: searchSchema });
+const remarkCountSql = sql<number>`(select count(*) from customer_remarks cr where cr.customer_id = ${customers.id})`;
 
 adminRouter.get(
   '/customers',
-  validateQuery(customerListSchema),
+  validateQuery(adminCustomerListSchema),
   asyncHandler(async (_req, res) => {
-    const query = validatedQuery<z.infer<typeof customerListSchema>>(res);
-    const where = query.search
-      ? or(like(customers.name, likeTerm(query.search)), like(customers.phone, likeTerm(query.search)))
-      : undefined;
+    const query = validatedQuery<z.infer<typeof adminCustomerListSchema>>(res);
+    const filters: SQL[] = [];
+    if (query.search) {
+      filters.push(
+        or(
+          like(customers.name, likeTerm(query.search)),
+          like(customers.phone, likeTerm(query.search)),
+          like(customers.email, likeTerm(query.search)),
+        )!,
+      );
+    }
+    if (query.filter === 'blocked') filters.push(eq(customers.isBlocked, 1));
+    if (query.filter === 'reported') filters.push(sql`${remarkCountSql} > 0`);
+    const where = filters.length > 0 ? and(...filters) : undefined;
 
     const [[{ count } = { count: 0 }], rows] = await Promise.all([
       db.select({ count: sql<number>`count(*)` }).from(customers).where(where),
@@ -930,7 +948,10 @@ adminRouter.get(
           name: customers.name,
           phone: customers.phone,
           email: customers.email,
+          hasAccount: sql<number>`${customers.userId} is not null`,
+          isBlocked: customers.isBlocked,
           createdAt: customers.createdAt,
+          reports: remarkCountSql,
           orders: sql<number>`count(${orders.id})`,
           delivered: sql<number>`coalesce(sum(${orders.status} = ${OrderStatus.DELIVERED}), 0)`,
           cancelled: sql<number>`coalesce(sum(${orders.status} in (${OrderStatus.CANCELLED}, ${OrderStatus.REJECTED})), 0)`,
@@ -942,7 +963,12 @@ adminRouter.get(
         .leftJoin(orders, eq(orders.customerId, customers.id))
         .where(where)
         .groupBy(customers.id)
-        .orderBy(desc(sql`max(${orders.placedAt})`))
+        // Most-reported first in the "reported" view; otherwise most recent activity.
+        .orderBy(
+          ...(query.filter === 'reported' ? [desc(remarkCountSql)] : []),
+          desc(sql`max(${orders.placedAt})`),
+          desc(customers.id),
+        )
         .limit(query.perPage)
         .offset((query.page - 1) * query.perPage),
     ]);
@@ -951,6 +977,9 @@ adminRouter.get(
       res,
       rows.map(({ spent, ...row }) => ({
         ...row,
+        hasAccount: Boolean(Number(row.hasAccount)),
+        isBlocked: row.isBlocked === 1,
+        reports: toInt(row.reports),
         orders: toInt(row.orders),
         delivered: toInt(row.delivered),
         cancelled: toInt(row.cancelled),
@@ -960,6 +989,151 @@ adminRouter.get(
       })),
       { page: query.page, perPage: query.perPage, total: Number(count) },
     );
+  }),
+);
+
+const customerParam = z.object({ customerId: idSchema });
+
+/** Everything needed to decide on a block: reports from every restaurant, orders, reviews. */
+adminRouter.get(
+  '/customers/:customerId',
+  validateParams(customerParam),
+  asyncHandler(async (_req, res) => {
+    const { customerId } = validatedParams<{ customerId: number }>(res);
+    const [customer] = await db
+      .select({
+        id: customers.id,
+        name: customers.name,
+        phone: customers.phone,
+        email: customers.email,
+        userId: customers.userId,
+        isBlocked: customers.isBlocked,
+        blockedReason: customers.blockedReason,
+        blockedAt: customers.blockedAt,
+        createdAt: customers.createdAt,
+        lastLoginAt: users.lastLoginAt,
+      })
+      .from(customers)
+      .leftJoin(users, eq(users.id, customers.userId))
+      .where(eq(customers.id, customerId))
+      .limit(1);
+    if (!customer) throw notFound('Customer not found.', 'CUSTOMER_NOT_FOUND');
+
+    const reporter = alias(users, 'reporter');
+    const [remarks, recentOrders, reviews] = await Promise.all([
+      db
+        .select({
+          id: customerRemarks.id,
+          reason: customerRemarks.reason,
+          note: customerRemarks.note,
+          createdAt: customerRemarks.createdAt,
+          restaurantId: customerRemarks.restaurantId,
+          restaurantName: restaurants.name,
+          orderId: customerRemarks.orderId,
+          reportedBy: reporter.name,
+          reporterRole: reporter.role,
+        })
+        .from(customerRemarks)
+        .innerJoin(restaurants, eq(restaurants.id, customerRemarks.restaurantId))
+        .leftJoin(reporter, eq(reporter.id, customerRemarks.createdByUserId))
+        .where(eq(customerRemarks.customerId, customerId))
+        .orderBy(desc(customerRemarks.createdAt)),
+      db
+        .select({
+          id: orders.id,
+          orderNumber: orders.orderNumber,
+          status: orders.status,
+          placedAt: orders.placedAt,
+          total: orders.total,
+          cancelledReason: orders.cancelledReason,
+          restaurantName: restaurants.name,
+        })
+        .from(orders)
+        .innerJoin(restaurants, eq(restaurants.id, orders.restaurantId))
+        .where(eq(orders.customerId, customerId))
+        .orderBy(desc(orders.placedAt))
+        .limit(20),
+      db
+        .select({
+          id: orderReviews.id,
+          rating: orderReviews.rating,
+          comment: orderReviews.comment,
+          createdAt: orderReviews.createdAt,
+          restaurantName: restaurants.name,
+        })
+        .from(orderReviews)
+        .innerJoin(restaurants, eq(restaurants.id, orderReviews.restaurantId))
+        .where(eq(orderReviews.customerId, customerId))
+        .orderBy(desc(orderReviews.createdAt))
+        .limit(20),
+    ]);
+
+    ok(res, {
+      customer: { ...customer, isBlocked: customer.isBlocked === 1, hasAccount: customer.userId !== null },
+      remarks,
+      orders: recentOrders.map(({ total, ...row }) => ({ ...row, totalMinor: toMinor(total) })),
+      reviews,
+    });
+  }),
+);
+
+/**
+ * Block or unblock a customer. A block covers the account *and* the phone
+ * number: they are signed out everywhere, cannot sign in or order, and
+ * cannot sign up again with the same phone.
+ */
+adminRouter.patch(
+  '/customers/:customerId/block',
+  validateParams(customerParam),
+  validateBody(setCustomerBlockSchema),
+  asyncHandler(async (req, res) => {
+    const { customerId } = validatedParams<{ customerId: number }>(res);
+    const { blocked, reason } = req.body as SetCustomerBlockInput;
+    const { userId: adminId } = authOf(req);
+
+    const [customer] = await db
+      .select({ id: customers.id, userId: customers.userId, isBlocked: customers.isBlocked, name: customers.name })
+      .from(customers)
+      .where(eq(customers.id, customerId))
+      .limit(1);
+    if (!customer) throw notFound('Customer not found.', 'CUSTOMER_NOT_FOUND');
+    if ((customer.isBlocked === 1) === blocked) {
+      throw conflict(blocked ? 'This customer is already blocked.' : 'This customer isn’t blocked.', 'STATUS_UNCHANGED');
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(customers)
+        .set(
+          blocked
+            ? { isBlocked: 1, blockedReason: reason ?? null, blockedAt: new Date(), blockedByUserId: adminId }
+            : { isBlocked: 0, blockedReason: null, blockedAt: null, blockedByUserId: null },
+        )
+        .where(eq(customers.id, customerId));
+      if (customer.userId) {
+        await tx
+          .update(users)
+          .set({
+            status: blocked ? UserStatus.SUSPENDED : UserStatus.ACTIVE,
+            // Invalidate every access token now, not when it expires.
+            ...(blocked ? { tokenVersion: sql`${users.tokenVersion} + 1` } : {}),
+          })
+          .where(eq(users.id, customer.userId));
+      }
+    });
+    if (blocked && customer.userId) await revokeAllSessions(customer.userId);
+
+    await writeAudit({
+      actorUserId: adminId,
+      action: blocked ? 'customer.blocked' : 'customer.unblocked',
+      restaurantId: null,
+      entityType: 'customer',
+      entityId: customerId,
+      metadata: { name: customer.name, reason: reason ?? null },
+      ip: req.ip,
+    });
+
+    ok(res, { customerId, blocked });
   }),
 );
 

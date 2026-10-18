@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ApiError, apiGet } from '@/lib/api';
-import { FoodArt } from '@/components/food-art';
-import { ZoneLegend, ZoneRings } from '@/components/zone-rings';
+import { UtensilsCrossed } from 'lucide-react';
+import { RatingChip } from '@/components/stars';
 import { formatDistance, formatMoney, formatPrepTime } from '@/lib/format';
 import type { MenuItem, RestaurantDetail } from '@/lib/types';
 import { AddToCart } from '@/components/order/add-to-cart';
 import { CartSummary } from '@/components/order/cart-summary';
+import { ChevronLeft } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,27 +53,19 @@ export default async function RestaurantPage({ params, searchParams }: PageProps
   return (
     <div>
       {/* Banner */}
-      <div className="relative h-36 overflow-hidden border-b border-line bg-surface-inset sm:h-48">
-        {restaurant.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
+      {restaurant.coverUrl && (
+        <div className="relative h-40 overflow-hidden border-b border-line bg-surface-inset sm:h-56">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={restaurant.coverUrl} alt="" className="size-full object-cover" />
-        ) : (
-          <FoodArt
-            seed={restaurant.slug}
-            category={restaurant.categories[0] ?? restaurant.name}
-            className="size-full"
-            variant="banner"
-          />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--ny-background)] via-transparent to-transparent" />
-      </div>
+        </div>
+      )}
 
       <div className="mx-auto max-w-6xl px-4">
         <Link
           href="/"
-          className="mt-4 inline-block text-sm text-ink-muted transition-colors hover:text-accent-label"
+          className="mt-4 inline-flex items-center gap-1 text-sm text-ink-muted transition-colors hover:text-ink"
         >
-          ← All restaurants
+          <ChevronLeft aria-hidden className="size-4" /> All restaurants
         </Link>
 
         <header className="mt-3 flex flex-wrap items-start justify-between gap-4">
@@ -93,15 +86,15 @@ export default async function RestaurantPage({ params, searchParams }: PageProps
               <p className="mt-2 max-w-xl text-[15px] text-ink-muted">{restaurant.description}</p>
             )}
             <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-subtle">
+              <RatingChip rating={restaurant.rating} />
+              <span aria-hidden>·</span>
               <span>{restaurant.address}</span>
               <span aria-hidden>·</span>
               <span>{itemCount} dishes</span>
               {delivery !== null && (
                 <>
                   <span aria-hidden>·</span>
-                  <span className="font-mono tabular-nums">
-                    {formatDistance(delivery.distanceKm)} away
-                  </span>
+                  <span className="tabular-nums">{formatDistance(delivery.distanceKm)} away</span>
                 </>
               )}
             </p>
@@ -192,7 +185,6 @@ export default async function RestaurantPage({ params, searchParams }: PageProps
                       <MenuItemCard
                         key={item.id}
                         item={item}
-                        category={category.name}
                         restaurantId={restaurant.id}
                         closed={closed}
                       />
@@ -213,28 +205,31 @@ export default async function RestaurantPage({ params, searchParams }: PageProps
               locationQuery={lat && lng ? `?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}` : ''}
             />
             <div className="rounded-ny-card border border-line bg-surface p-4">
-              <h2 className="font-display text-sm font-semibold tracking-tight">Delivery area</h2>
-              <p className="mt-0.5 mb-3 text-xs text-ink-label">
-                {restaurant.name} sets its own price by distance.
-              </p>
-
+              <h2 className="font-display text-sm font-semibold tracking-tight">Delivery fees</h2>
               {restaurant.zones.length === 0 ? (
-                <p className="text-sm text-ink-muted">No delivery zones configured yet.</p>
+                <p className="mt-2 text-sm text-ink-muted">This restaurant hasn’t set up delivery yet.</p>
               ) : (
-                <>
-                  <div className="flex justify-center">
-                    <ZoneRings zones={restaurant.zones} quote={delivery} size={220} />
-                  </div>
-                  <div className="mt-3 border-t border-line-soft pt-3">
-                    <ZoneLegend zones={restaurant.zones} quote={delivery} />
-                  </div>
-                </>
+                <ul className="mt-2 divide-y divide-line-soft text-sm">
+                  {restaurant.zones.map((zone) => {
+                    const yours = delivery?.deliverable && delivery.zone.id === zone.id;
+                    return (
+                      <li key={zone.id} className={`flex justify-between py-1.5 ${yours ? 'font-medium text-ink' : 'text-ink-muted'}`}>
+                        <span className="tabular-nums">
+                          {zone.minDistanceKm}–{zone.maxDistanceKm} km{yours ? ' · you' : ''}
+                        </span>
+                        <span className={`tabular-nums ${zone.feeMinor === 0 ? 'text-success' : ''}`}>
+                          {zone.feeMinor === 0 ? 'Free' : formatMoney(zone.feeMinor)}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
-
-              <p className="mt-3 border-t border-line-soft pt-3 text-xs leading-relaxed text-ink-label">
-                The fee is calculated on our servers from your delivery pin — never from your
-                browser.
-              </p>
+              {restaurant.minOrderMinor > 0 && (
+                <p className="mt-2 border-t border-line-soft pt-2 text-xs text-ink-muted">
+                  Minimum order {formatMoney(restaurant.minOrderMinor)}
+                </p>
+              )}
             </div>
           </aside>
         </div>
@@ -245,12 +240,10 @@ export default async function RestaurantPage({ params, searchParams }: PageProps
 
 function MenuItemCard({
   item,
-  category,
   restaurantId,
   closed,
 }: {
   item: MenuItem;
-  category: string;
   restaurantId: number;
   closed: boolean;
 }) {
@@ -265,7 +258,9 @@ function MenuItemCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={item.imageUrl} alt="" loading="lazy" className="size-full object-cover" />
         ) : (
-          <FoodArt seed={item.name} category={category} className="size-full" />
+          <div className="grid size-full place-items-center text-ink-label">
+            <UtensilsCrossed aria-hidden className="size-6" strokeWidth={1.25} />
+          </div>
         )}
       </div>
 

@@ -1,3 +1,5 @@
+import { can, getSession } from '@/lib/session';
+import { NoAccess } from '@/components/no-access';
 import { fetchTenant } from '@/lib/dashboard-api';
 import { MenuManager, type MenuCategory, type MenuItem } from '@/components/menu-manager';
 
@@ -5,6 +7,8 @@ export const metadata = { title: 'Menu' };
 export const dynamic = 'force-dynamic';
 
 export default async function MenuPage() {
+  const accessSession = await getSession();
+  if (!can(accessSession, 'MENU')) return <NoAccess what="the menu" />;
   const [categories, items] = await Promise.all([
     fetchTenant<MenuCategory[]>('/restaurant/menu/categories'),
     fetchTenant<MenuItem[]>('/restaurant/menu/items'),

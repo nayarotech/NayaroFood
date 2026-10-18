@@ -8,14 +8,21 @@
 export const UserRole = {
   SUPER_ADMIN: 'SUPER_ADMIN',
   RESTAURANT_ADMIN: 'RESTAURANT_ADMIN',
+  /** Someone who orders food. Must be signed in to place an order. */
+  CUSTOMER: 'CUSTOMER',
+  /** Delivers one restaurant's orders. Created by that restaurant, not self-registered. */
+  RIDER: 'RIDER',
 } as const;
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
 /** A user's role *within* one restaurant, via the `restaurant_users` join table. */
 export const RestaurantRole = {
   OWNER: 'OWNER',
+  /** Runs the restaurant day to day, with exactly the permissions the owner grants. */
   MANAGER: 'MANAGER',
+  /** Legacy; treated like MANAGER. */
   STAFF: 'STAFF',
+  RIDER: 'RIDER',
 } as const;
 export type RestaurantRole = (typeof RestaurantRole)[keyof typeof RestaurantRole];
 
@@ -118,3 +125,51 @@ export const ONBOARDING_SEQUENCE: readonly OnboardingStep[] = [
 
 export const enumValues = <T extends Record<string, string>>(e: T) =>
   Object.values(e) as [T[keyof T], ...T[keyof T][]];
+
+/**
+ * Why a restaurant flagged a customer. Remarks are factual incident reports
+ * the platform uses to spot repeat problems — not public reviews.
+ */
+export const CustomerRemarkReason = {
+  NOT_REACHABLE: 'NOT_REACHABLE',
+  CANCELLED_LATE: 'CANCELLED_LATE',
+  REFUSED_DELIVERY: 'REFUSED_DELIVERY',
+  WRONG_ADDRESS: 'WRONG_ADDRESS',
+  FAKE_ORDER: 'FAKE_ORDER',
+  ABUSIVE: 'ABUSIVE',
+  OTHER: 'OTHER',
+} as const;
+export type CustomerRemarkReason = (typeof CustomerRemarkReason)[keyof typeof CustomerRemarkReason];
+
+export const CUSTOMER_REMARK_LABEL: Record<CustomerRemarkReason, string> = {
+  NOT_REACHABLE: 'Didn’t answer the phone',
+  CANCELLED_LATE: 'Cancelled at the last moment',
+  REFUSED_DELIVERY: 'Refused the delivery',
+  WRONG_ADDRESS: 'Wrong or fake address',
+  FAKE_ORDER: 'Fake order',
+  ABUSIVE: 'Abusive behaviour',
+  OTHER: 'Other',
+};
+
+/**
+ * What a manager may do, granted one by one by the restaurant owner. The
+ * owner implicitly has all of them, plus managing the team itself.
+ */
+export const StaffPermission = {
+  ORDERS: 'ORDERS',
+  RIDERS: 'RIDERS',
+  MENU: 'MENU',
+  CUSTOMERS: 'CUSTOMERS',
+  REVIEWS: 'REVIEWS',
+  SETTINGS: 'SETTINGS',
+} as const;
+export type StaffPermission = (typeof StaffPermission)[keyof typeof StaffPermission];
+
+export const STAFF_PERMISSION_INFO: Record<StaffPermission, { label: string; detail: string }> = {
+  ORDERS: { label: 'Orders', detail: 'See incoming orders, accept or reject them, and move them along.' },
+  RIDERS: { label: 'Riders & delivery', detail: 'Add riders and assign orders to them.' },
+  MENU: { label: 'Menu', detail: 'Add and edit dishes, prices and photos.' },
+  CUSTOMERS: { label: 'Customers', detail: 'See customers and report problem customers.' },
+  REVIEWS: { label: 'Reviews', detail: 'Read customers’ ratings and comments.' },
+  SETTINGS: { label: 'Settings', detail: 'Change opening status, delivery zones, profile and photos.' },
+};

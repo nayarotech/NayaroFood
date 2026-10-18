@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { Route } from 'next';
 import { apiGet, refreshSession } from '@/lib/api';
 import { safeNext } from '@/lib/safe-next';
+import { homeFor } from '@/lib/roles';
 
 
 /**
@@ -48,7 +49,7 @@ export function SilentSignIn({ next, children }: { next?: string; children: Reac
             setChecking(false);
             return;
           }
-          const fallback = me.user.role === 'SUPER_ADMIN' ? '/admin' : '/dashboard';
+          const fallback = homeFor(me.user.role);
           router.replace((safeNext(next) ?? fallback) as Route);
           router.refresh();
           return;

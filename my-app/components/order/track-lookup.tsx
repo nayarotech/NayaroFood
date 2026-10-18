@@ -7,6 +7,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { ApiError, apiPost } from '@/lib/api';
 import { loadRecentOrders, type RecentOrder } from '@/lib/cart';
 import { formatMoney, timeAgo } from '@/lib/format';
+import { ChevronRight } from 'lucide-react';
 
 const EMPTY: RecentOrder[] = [];
 let cached: { raw: string; list: RecentOrder[] } | null = null;
@@ -75,7 +76,7 @@ export function TrackLookup() {
                     <p className="text-xs text-ink-label">Order #{order.orderNumber} · {timeAgo(order.placedAt)}</p>
                   </div>
                   <span className="text-sm font-semibold tabular-nums">{formatMoney(order.totalMinor)}</span>
-                  <span aria-hidden className="text-ink-label">→</span>
+                  <ChevronRight aria-hidden className="size-4 text-ink-label" />
                 </Link>
               </li>
             ))}

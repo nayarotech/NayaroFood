@@ -15,7 +15,6 @@ import {
 } from '@nayaro/shared';
 import { db } from '../../db/client.js';
 import {
-  customers,
   deliveryZones,
   foodItems,
   orderItems,
@@ -26,8 +25,9 @@ import {
   restaurants,
 } from '../../db/schema/index.js';
 import { badRequest, conflict, notFound, unprocessable } from '../../http/errors.js';
+import type { CustomerContext } from '../auth/auth.types.js';
 import { sendOrderNotification } from '../whatsapp/whatsapp.service.js';
-import { emitRealtime } from '../realtime/events.js';
+import { emitRealtime, emitToUser } from '../realtime/events.js';
 import { pushToRestaurant } from '../../lib/push.js';
 import { TRACKING_ALPHABET, formatMoney } from '@nayaro/shared';
 import { randomBytes } from 'node:crypto';
@@ -69,7 +69,7 @@ export function generateTrackingCode(): string {
  * destination. A tampered price, distance or fee is not rejected — it is simply
  * never read.
  */
-export async function placeOrder(input: PlaceOrderInput): Promise<PlacedOrder> {
+export async function placeOrder(input: PlaceOrderInput, customer: CustomerContext): Promise<PlacedOrder> {
   // Replay of the same submission returns the original order rather than a duplicate.
   if (input.idempotencyKey) {
     const [existing] = await db
@@ -79,6 +79,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlacedOrder> {
         and(
           eq(orders.restaurantId, input.restaurantId),
           eq(orders.idempotencyKey, input.idempotencyKey),
+          eq(orders.customerId, customer.customerId),
         ),
       )
       .limit(1);
@@ -224,29 +225,9 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlacedOrder> {
     const deliveryFeeMinor = quote.feeMinor;
     const totalMinor = subtotalMinor + deliveryFeeMinor;
 
-    /* ---- customer records ---- */
+    /* ---- customer: always the signed-in account, never the request body ---- */
 
-    const [existingCustomer] = await tx
-      .select({ id: customers.id })
-      .from(customers)
-      .where(eq(customers.phone, input.customer.phone))
-      .limit(1);
-
-    let customerId: number;
-    if (existingCustomer) {
-      customerId = existingCustomer.id;
-      await tx
-        .update(customers)
-        .set({ name: input.customer.name, email: input.customer.email ?? null })
-        .where(eq(customers.id, customerId));
-    } else {
-      const [inserted] = await tx.insert(customers).values({
-        phone: input.customer.phone,
-        name: input.customer.name,
-        email: input.customer.email ?? null,
-      });
-      customerId = inserted.insertId;
-    }
+    const customerId = customer.customerId;
 
     /* ---- order number, reserved under the settings row lock ---- */
 
@@ -262,9 +243,9 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlacedOrder> {
       orderNumber,
       trackingCode,
       customerId,
-      customerName: input.customer.name,
-      customerPhone: input.customer.phone,
-      customerEmail: input.customer.email ?? null,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+      customerEmail: customer.email,
       deliveryAddress: input.delivery.address,
       deliveryLandmark: input.delivery.landmark ?? null,
       deliveryLatitude: input.delivery.latitude,
@@ -358,7 +339,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlacedOrder> {
       id: result.id,
       orderNumber: result.orderNumber,
       status: result.status,
-      customerName: input.customer.name,
+      customerName: customer.name,
       totalMinor: result.totalMinor,
       distanceKm: result.distanceKm,
       placedAt: new Date().toISOString(),
@@ -368,7 +349,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlacedOrder> {
 
   void pushToRestaurant(input.restaurantId, {
     title: `New order #${result.orderNumber}`,
-    body: `${input.customer.name} · ${formatMoney(result.totalMinor)} · ${result.distanceKm} km`,
+    body: `${customer.name} · ${formatMoney(result.totalMinor)} · ${result.distanceKm} km`,
     url: '/dashboard/orders',
     tag: `order-${result.id}`,
     orderId: result.id,
@@ -383,8 +364,8 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlacedOrder> {
     subtotalMinor: result.subtotalMinor,
     deliveryFeeMinor: result.deliveryFeeMinor,
     totalMinor: result.totalMinor,
-    customerName: input.customer.name,
-    customerPhone: input.customer.phone,
+    customerName: customer.name,
+    customerPhone: customer.phone,
     address: input.delivery.address,
     distanceKm: result.distanceKm,
     note: input.note,
@@ -434,7 +415,13 @@ export async function updateOrderStatus(params: {
 }): Promise<{ id: number; status: OrderStatus }> {
   return db.transaction(async (tx) => {
     const [order] = await tx
-      .select({ id: orders.id, status: orders.status, customerId: orders.customerId, total: orders.total })
+      .select({
+        id: orders.id,
+        status: orders.status,
+        customerId: orders.customerId,
+        total: orders.total,
+        riderUserId: orders.riderUserId,
+      })
       .from(orders)
       .where(and(eq(orders.id, params.orderId), eq(orders.restaurantId, params.restaurantId)))
       .for('update')
@@ -452,6 +439,7 @@ export async function updateOrderStatus(params: {
         status: params.to,
         ...(params.to === OrderStatus.ACCEPTED ? { acceptedAt: now } : {}),
         ...(params.to === OrderStatus.READY ? { readyAt: now } : {}),
+        ...(params.to === OrderStatus.OUT_FOR_DELIVERY ? { pickedUpAt: now } : {}),
         ...(params.to === OrderStatus.DELIVERED ? { deliveredAt: now } : {}),
         ...(params.to === OrderStatus.CANCELLED || params.to === OrderStatus.REJECTED
           ? { cancelledReason: params.reason ?? null }
@@ -499,6 +487,10 @@ export async function updateOrderStatus(params: {
       orderId: order.id,
       status: params.to,
     });
+    // The assigned rider's screen follows the order too.
+    if (order.riderUserId) {
+      emitToUser(order.riderUserId, { type: 'order.status', orderId: order.id, status: params.to });
+    }
 
     return { id: order.id, status: params.to };
   });

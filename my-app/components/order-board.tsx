@@ -6,6 +6,9 @@ import { ApiError, apiPatch } from '@/lib/api';
 import { formatDateTime, formatDistance, formatMoney, timeAgo } from '@/lib/format';
 import { ActionDialog } from '@/components/action-dialog';
 import { OrderStatusBadge, type OrderStatus } from '@/components/order-status-badge';
+import { ReportCustomerDialog } from '@/components/report-customer-dialog';
+import { Stars } from '@/components/stars';
+import { Bike, Flag, ShieldAlert, TriangleAlert } from 'lucide-react';
 
 export type { OrderStatus };
 
@@ -24,7 +27,22 @@ export interface DashboardOrder {
   totalMinor: number;
   note: string | null;
   items: { name: string; quantity: number }[];
+  customerId: number;
+  /** Reports about this customer from every restaurant on Nayaro. */
+  customerReports: number;
+  customerBlocked: boolean;
+  rider: { id: number; name: string } | null;
+  deliveryNote: string | null;
+  rating: number | null;
 }
+
+export interface RiderOption {
+  userId: number;
+  name: string;
+  active?: number;
+}
+
+const ASSIGNABLE: OrderStatus[] = ['ACCEPTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'];
 
 interface Action {
   to: OrderStatus;
@@ -66,8 +84,19 @@ const NEXT_ACTIONS: Record<OrderStatus, Action[]> = {
   CANCELLED: [],
 };
 
-export function OrderBoard({ initial, view }: { initial: DashboardOrder[]; view: 'open' | 'history' }) {
+export function OrderBoard({
+  initial,
+  view,
+  riders = [],
+  canAssign = false,
+}: {
+  initial: DashboardOrder[];
+  view: 'open' | 'history';
+  riders?: RiderOption[];
+  canAssign?: boolean;
+}) {
   const router = useRouter();
+  const [reporting, setReporting] = useState<DashboardOrder | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<{ order: DashboardOrder; action: Action } | null>(null);
@@ -78,6 +107,18 @@ export function OrderBoard({ initial, view }: { initial: DashboardOrder[]; view:
     const timer = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(timer);
   }, []);
+
+  async function assign(order: DashboardOrder, riderId: number | null) {
+    setBusyId(order.id);
+    setError(null);
+    try {
+      await apiPatch(`/restaurant/orders/${order.id}/rider`, { riderId });
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : 'Could not assign the rider.');
+    }
+    setBusyId(null);
+  }
 
   async function advance(order: DashboardOrder, to: OrderStatus, reason?: string) {
     setBusyId(order.id);
@@ -153,6 +194,16 @@ export function OrderBoard({ initial, view }: { initial: DashboardOrder[]; view:
                   <p className="text-xs text-ink-subtle">
                     {order.deliveryAddress} · {formatDistance(order.distanceKm)} away
                   </p>
+                  {order.customerBlocked ? (
+                    <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-danger">
+                      <ShieldAlert aria-hidden className="size-3.5" /> Blocked by Nayaro — confirm before cooking
+                    </p>
+                  ) : order.customerReports > 0 ? (
+                    <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-warning">
+                      <TriangleAlert aria-hidden className="size-3.5" />
+                      Reported {order.customerReports}× on Nayaro
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="text-right">
@@ -174,13 +225,46 @@ export function OrderBoard({ initial, view }: { initial: DashboardOrder[]; view:
 
               {order.note && (
                 <p className="mt-2 rounded-ny bg-surface-muted px-3 py-2 text-xs text-ink-muted">
-                  Note: {order.note}
+                  Customer note: {order.note}
                 </p>
               )}
 
-              {NEXT_ACTIONS[order.status].length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {NEXT_ACTIONS[order.status].map((action) => (
+              {(order.rider || (canAssign && ASSIGNABLE.includes(order.status)) || order.deliveryNote || order.rating) && (
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-muted">
+                  {canAssign && ASSIGNABLE.includes(order.status) ? (
+                    <label className="flex items-center gap-1.5">
+                      <Bike aria-hidden className="size-4 text-ink-label" />
+                      <select
+                        value={order.rider?.id ?? ''}
+                        disabled={busyId === order.id}
+                        onChange={(e) => void assign(order, e.target.value ? Number(e.target.value) : null)}
+                        aria-label={`Rider for order ${order.orderNumber}`}
+                        className="rounded-ny border border-line bg-surface px-2 py-1 text-xs text-ink focus:border-accent focus:outline-none"
+                      >
+                        <option value="">{riders.length === 0 ? 'No riders yet' : 'Assign a rider'}</option>
+                        {riders.map((rider) => (
+                          <option key={rider.userId} value={rider.userId}>
+                            {rider.name}{rider.active ? ` (${rider.active} active)` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : order.rider ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Bike aria-hidden className="size-4 text-ink-label" /> {order.rider.name}
+                    </span>
+                  ) : null}
+                  {order.deliveryNote && <span>Rider note: “{order.deliveryNote}”</span>}
+                  {order.rating && (
+                    <span className="inline-flex items-center gap-1">
+                      <Stars value={order.rating} size={12} /> customer rating
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {NEXT_ACTIONS[order.status].map((action) => (
                     <button
                       key={action.to}
                       type="button"
@@ -199,12 +283,28 @@ export function OrderBoard({ initial, view }: { initial: DashboardOrder[]; view:
                       {busyId === order.id && !action.reason ? 'Saving…' : action.label}
                     </button>
                   ))}
-                </div>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setReporting(order)}
+                  className="ml-auto inline-flex items-center gap-1 rounded-ny px-2 py-1.5 text-xs text-ink-label hover:bg-surface-muted hover:text-danger"
+                >
+                  <Flag aria-hidden className="size-3.5" /> Report customer
+                </button>
+              </div>
             </li>
           );
         })}
       </ul>
+
+      {reporting && (
+        <ReportCustomerDialog
+          customerId={reporting.customerId}
+          customerName={reporting.customerName}
+          orderId={reporting.id}
+          orderNumber={reporting.orderNumber}
+          onClose={() => setReporting(null)}
+        />
+      )}
 
       <ActionDialog
         open={pending !== null}

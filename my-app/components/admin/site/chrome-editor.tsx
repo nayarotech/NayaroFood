@@ -6,6 +6,7 @@ import type { ChromeContent, SiteLink } from '@nayaro/shared';
 import { ApiError, apiPost, apiPut } from '@/lib/api';
 import { refreshSiteContent } from '@/app/admin/site/actions';
 import { EditorCard, SaveBar, SmallButton, TextField, useUnsavedWarning } from './form-ui';
+import { ChevronUp, X } from 'lucide-react';
 
 type Notice = { tone: 'ok' | 'error'; text: string } | null;
 
@@ -168,8 +169,8 @@ function LinkList({ links, onChange, errors, prefix, pages }: {
             {errors[`${prefix}.${index}.href`] && <p className="mt-1 text-xs text-danger">{errors[`${prefix}.${index}.href`]}</p>}
           </div>
           <SmallButton aria-label="Move up" disabled={index === 0}
-            onClick={() => { const next = [...links]; [next[index - 1], next[index]] = [next[index]!, next[index - 1]!]; onChange(next); }}>↑</SmallButton>
-          <SmallButton danger onClick={() => onChange(links.filter((_, i) => i !== index))}>✕</SmallButton>
+            onClick={() => { const next = [...links]; [next[index - 1], next[index]] = [next[index]!, next[index - 1]!]; onChange(next); }}><ChevronUp aria-hidden className="size-3.5" /></SmallButton>
+          <SmallButton danger onClick={() => onChange(links.filter((_, i) => i !== index))}><X aria-hidden className="size-3.5" /></SmallButton>
         </div>
       ))}
     </div>

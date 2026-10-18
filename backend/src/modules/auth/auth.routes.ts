@@ -2,16 +2,25 @@ import { Router, type Response } from 'express';
 import {
   changePasswordSchema,
   loginSchema,
+  forgotPasswordSchema,
+  completeSignupSchema,
+  startSignupSchema,
   registerRestaurantSchema,
+  resendCodeSchema,
+  resetPasswordSchema,
+  verifySignupSchema,
+  type ResetPasswordInput,
+  type VerifySignupInput,
   updateProfileSchema,
   type ChangePasswordInput,
   type LoginInput,
+  type CompleteSignupInput,
   type RegisterRestaurantInput,
   type UpdateProfileInput,
 } from '@nayaro/shared';
 import { emitRealtime } from '../realtime/events.js';
 import { env, isProduction } from '../../config/env.js';
-import { authLimiter } from '../../http/middleware/rate-limit.js';
+import { authLimiter, emailCodeLimiter, otpVerifyLimiter } from '../../http/middleware/rate-limit.js';
 import { requireAuth, authOf } from '../../http/middleware/auth.js';
 import { asyncHandler, validateBody } from '../../http/middleware/validate.js';
 import { created, noContent, ok } from '../../http/respond.js';
@@ -23,8 +32,13 @@ import { eq, sql } from 'drizzle-orm';
 import {
   getMe,
   login,
+  completeCustomerSignup,
   refreshSession,
   registerRestaurant,
+  requestPasswordReset,
+  verifyCustomerSignupEmail,
+  resetPassword,
+  startCustomerSignup,
   revokeAllSessions,
   revokeSession,
   type SessionResult,
@@ -103,13 +117,82 @@ authRouter.post(
   }),
 );
 
+/**
+ * Customer sign-up, in three steps: email → code → details. The email is
+ * proven before anything else is asked for. Restaurants use /register.
+ */
+authRouter.post(
+  '/register-customer/start',
+  emailCodeLimiter,
+  validateBody(startSignupSchema),
+  asyncHandler(async (req, res) => {
+    const { email } = req.body as { email: string };
+    created(res, await startCustomerSignup(email, req.ip));
+  }),
+);
+
+authRouter.post(
+  '/register-customer/resend',
+  emailCodeLimiter,
+  validateBody(resendCodeSchema),
+  asyncHandler(async (req, res) => {
+    const { email } = req.body as { email: string };
+    ok(res, await startCustomerSignup(email, req.ip));
+  }),
+);
+
+authRouter.post(
+  '/register-customer/verify',
+  otpVerifyLimiter,
+  validateBody(verifySignupSchema),
+  asyncHandler(async (req, res) => {
+    const { email, code } = req.body as VerifySignupInput;
+    ok(res, await verifyCustomerSignupEmail(email, code));
+  }),
+);
+
+authRouter.post(
+  '/register-customer/complete',
+  authLimiter,
+  validateBody(completeSignupSchema),
+  asyncHandler(async (req, res) => {
+    const session = await completeCustomerSignup(req.body as CompleteSignupInput, metaOf(req));
+    setSessionCookies(res, session);
+    created(res, { user: session.user, restaurantId: null, accessToken: session.accessToken });
+  }),
+);
+
+/** Forgotten password: always 200, so it never reveals whether an email is registered. */
+authRouter.post(
+  '/password/forgot',
+  emailCodeLimiter,
+  validateBody(forgotPasswordSchema),
+  asyncHandler(async (req, res) => {
+    const { email } = req.body as { email: string };
+    await requestPasswordReset(email, req.ip);
+    ok(res, { email });
+  }),
+);
+
+authRouter.post(
+  '/password/reset',
+  otpVerifyLimiter,
+  validateBody(resetPasswordSchema),
+  asyncHandler(async (req, res) => {
+    const { email, code, newPassword } = req.body as ResetPasswordInput;
+    await resetPassword(email, code, newPassword);
+    clearSessionCookies(res);
+    ok(res, { reset: true });
+  }),
+);
+
 authRouter.post(
   '/login',
   authLimiter,
   validateBody(loginSchema),
   asyncHandler(async (req, res) => {
-    const { email, password, rememberMe } = req.body as LoginInput;
-    const session = await login(email, password, rememberMe, metaOf(req));
+    const { identifier, password, rememberMe } = req.body as LoginInput;
+    const session = await login(identifier, password, rememberMe, metaOf(req));
     setSessionCookies(res, session);
     ok(res, {
       user: session.user,

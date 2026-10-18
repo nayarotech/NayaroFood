@@ -1,11 +1,14 @@
 import { fetchTenant } from '@/lib/dashboard-api';
-import { getSession } from '@/lib/session';
+import { can, getSession } from '@/lib/session';
+import { NoAccess } from '@/components/no-access';
 import { SettingsForm, type RestaurantOverview } from '@/components/settings-form';
 
 export const metadata = { title: 'Settings' };
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
+  const accessSession = await getSession();
+  if (!can(accessSession, 'SETTINGS')) return <NoAccess what="settings" />;
   const [overview, session] = await Promise.all([
     fetchTenant<RestaurantOverview>('/restaurant/overview'),
     getSession(),

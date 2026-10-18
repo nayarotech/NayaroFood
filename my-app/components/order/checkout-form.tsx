@@ -28,19 +28,20 @@ export function CheckoutForm({
   menu,
   delivery,
   location,
+  customer,
 }: {
   restaurant: { id: number; name: string; slug: string; minOrderMinor: number; closed: boolean };
   menu: { id: number; name: string; priceMinor: number }[];
   delivery: DeliveryQuote | null;
   location: { lat: number; lng: number } | null;
+  /** The signed-in account; the API uses it, not anything typed here. */
+  customer: { name: string; phone: string };
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const cart = useCart(restaurant.id);
   const [pending, startTransition] = useTransition();
 
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [landmark, setLandmark] = useState('');
   const [note, setNote] = useState('');
@@ -59,8 +60,6 @@ export function CheckoutForm({
     const saved = loadCustomer();
     if (!saved) return;
     /* eslint-disable react-hooks/set-state-in-effect -- one-time hydration from localStorage */
-    setName((v) => v || saved.name);
-    setPhone((v) => v || saved.phone);
     setAddress((v) => v || saved.address);
     setLandmark((v) => v || saved.landmark);
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -133,8 +132,6 @@ export function CheckoutForm({
   async function placeOrder(event: React.FormEvent) {
     event.preventDefault();
     const errors: Record<string, string> = {};
-    if (name.trim().length < 2) errors.name = 'Enter your name.';
-    if (phone.replace(/\D/g, '').length < 7) errors.phone = 'Enter a phone number the rider can call.';
     if (address.trim().length < 5) errors.address = 'Enter your delivery address.';
     if (!location) errors.location = 'Set your delivery location so we can work out the delivery fee.';
     if (Object.keys(errors).length > 0) {
@@ -150,7 +147,6 @@ export function CheckoutForm({
       const order = await apiPost<PlacedOrder>('/public/orders', {
         restaurantId: restaurant.id,
         items: lines.map((l) => ({ foodItemId: l.id, quantity: l.quantity })),
-        customer: { name: name.trim(), phone: phone.trim() },
         delivery: {
           address: address.trim(),
           latitude: location!.lat,
@@ -162,7 +158,7 @@ export function CheckoutForm({
         idempotencyKey,
       });
 
-      if (remember) saveCustomer({ name: name.trim(), phone: phone.trim(), address: address.trim(), landmark: landmark.trim() });
+      if (remember) saveCustomer({ name: customer.name, phone: customer.phone, address: address.trim(), landmark: landmark.trim() });
       rememberOrder({
         trackingCode: order.trackingCode,
         orderNumber: order.orderNumber,
@@ -205,12 +201,17 @@ export function CheckoutForm({
   return (
     <form onSubmit={placeOrder} noValidate className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
       <div className="min-w-0 space-y-5">
-        <Section step={1} title="Your details">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Input id="checkout-name" label="Name" value={name} onChange={setName} autoComplete="name" error={fields.name} />
-            <Input id="checkout-phone" label="Phone" value={phone} onChange={setPhone} type="tel" autoComplete="tel"
-              placeholder="98XXXXXXXX" error={fields.phone} hint="The restaurant and rider will call this number." />
+        <Section step={1} title="Contact">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <p>
+              <span className="font-medium">{customer.name}</span>
+              <span className="text-ink-muted"> · {customer.phone}</span>
+            </p>
+            <Link href={'/account/profile' as Route} className="text-sm text-accent-label hover:underline">
+              Edit
+            </Link>
           </div>
+          <p className="mt-1 text-xs text-ink-label">The restaurant and rider will call this number about your order.</p>
         </Section>
 
         <Section step={2} title="Delivery location">
@@ -239,7 +240,7 @@ export function CheckoutForm({
               <p className="text-sm text-ink-muted">We need your location to calculate the delivery fee.</p>
               <button type="button" onClick={useMyLocation} disabled={locating || pending}
                 className="mt-3 rounded-ny bg-accent px-4 py-2.5 text-sm font-semibold text-on-accent shadow-[var(--ny-shadow-accent)] disabled:opacity-50">
-                {locating ? 'Getting your location…' : pending ? 'Calculating…' : '📍 Use my current location'}
+                {locating ? 'Getting your location…' : pending ? 'Calculating…' : 'Use my current location'}
               </button>
             </div>
           )}

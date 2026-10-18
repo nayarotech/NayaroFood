@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { getSite } from '@/lib/site';
+import { Mail, MapPin, Phone } from 'lucide-react';
 
 const SOCIAL: { key: 'facebook' | 'instagram' | 'tiktok' | 'youtube'; label: string; path: string }[] = [
   { key: 'facebook', label: 'Facebook', path: 'M13.5 21v-7.5h2.6l.4-3h-3V8.6c0-.9.3-1.5 1.5-1.5h1.6V4.4c-.3 0-1.2-.1-2.3-.1-2.3 0-3.8 1.4-3.8 3.9v2.3H8v3h2.6V21' },
@@ -40,12 +41,12 @@ export async function SiteFooter() {
           {footer && (footer.contact.email || footer.contact.phone || footer.contact.address) && (
             <ul className="mt-4 space-y-1 text-sm text-ink-muted">
               {footer.contact.email && (
-                <li><a href={`mailto:${footer.contact.email}`} className="hover:text-accent-label">✉ {footer.contact.email}</a></li>
+                <li><a href={`mailto:${footer.contact.email}`} className="inline-flex items-center gap-2 hover:text-accent-label"><Mail aria-hidden className="size-4 text-ink-label" /> {footer.contact.email}</a></li>
               )}
               {footer.contact.phone && (
-                <li><a href={`tel:${footer.contact.phone.replace(/\s/g, '')}`} className="hover:text-accent-label">☎ {footer.contact.phone}</a></li>
+                <li><a href={`tel:${footer.contact.phone.replace(/\s/g, '')}`} className="inline-flex items-center gap-2 hover:text-accent-label"><Phone aria-hidden className="size-4 text-ink-label" /> {footer.contact.phone}</a></li>
               )}
-              {footer.contact.address && <li>⌂ {footer.contact.address}</li>}
+              {footer.contact.address && <li className="inline-flex items-center gap-2"><MapPin aria-hidden className="size-4 text-ink-label" /> {footer.contact.address}</li>}
             </ul>
           )}
           {social.length > 0 && (

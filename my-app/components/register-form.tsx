@@ -114,7 +114,11 @@ export function RegisterForm() {
           className="mt-0.5 size-4 accent-[var(--ny-accent)]"
         />
         <span>
-          I agree to the Nayaro Tech platform terms.
+          I agree to the{' '}
+          <Link href={'/terms' as '/'} target="_blank" className="font-medium text-accent-label hover:underline">
+            terms of service
+          </Link>
+          .
           {fields.acceptTerms && <span className="block text-xs text-danger">{fields.acceptTerms}</span>}
         </span>
       </label>
@@ -126,13 +130,6 @@ export function RegisterForm() {
       >
         {submitting ? 'Creating your account…' : 'Create restaurant account'}
       </button>
-
-      <p className="text-center text-sm text-ink-muted">
-        Already listed?{' '}
-        <Link href="/login" className="font-medium text-accent-label hover:text-accent-hover">
-          Sign in
-        </Link>
-      </p>
     </form>
   );
 }

@@ -55,7 +55,7 @@ export default async function AdminOverviewPage() {
     return (
       <>
         <PageHeader title="Overview" />
-        <EmptyState>Couldn&rsquo;t load platform stats. Is the API running?</EmptyState>
+        <EmptyState>Couldn&rsquo;t load platform stats. Try again in a moment.</EmptyState>
       </>
     );
   }
@@ -103,7 +103,7 @@ export default async function AdminOverviewPage() {
           title="Orders per day — last 14 days"
           action={
             <Link href="/admin/orders" className="text-xs font-semibold text-accent-label hover:underline">
-              All orders →
+              All orders
             </Link>
           }
         >
@@ -142,13 +142,13 @@ export default async function AdminOverviewPage() {
           title={`Awaiting verification${restaurants.pending > 0 ? ` (${restaurants.pending})` : ''}`}
           action={
             <Link href="/admin/restaurants?status=PENDING" className="text-xs font-semibold text-accent-label hover:underline">
-              Review all →
+              Review all
             </Link>
           }
           flush
         >
           {stats.pendingApprovals.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-ink-muted">No applications waiting. 🎉</p>
+            <p className="px-5 py-8 text-center text-sm text-ink-muted">No applications waiting.</p>
           ) : (
             <ul className="divide-y divide-line-soft">
               {stats.pendingApprovals.map((restaurant) => (
@@ -175,7 +175,7 @@ export default async function AdminOverviewPage() {
           title="Latest orders"
           action={
             <Link href="/admin/orders" className="text-xs font-semibold text-accent-label hover:underline">
-              Full history →
+              Full history
             </Link>
           }
           flush

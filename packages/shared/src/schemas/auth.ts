@@ -30,13 +30,71 @@ export const registerRestaurantSchema = z
   });
 export type RegisterRestaurantInput = z.infer<typeof registerRestaurantSchema>;
 
+/** Customers sign in with their phone or email; staff with their email. */
 export const loginSchema = z.object({
-  email: emailSchema,
+  identifier: z.string().trim().min(3, 'Enter your email or phone number.').max(190),
   password: z.string().min(1, 'Enter your password.'),
   /** Extends refresh-token lifetime; never changes access-token lifetime. */
   rememberMe: z.boolean().default(false),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
+
+/**
+ * Customer sign-up happens in three steps — the email is proven before
+ * anything else is asked for:
+ *   1. startSignupSchema      email → a code is emailed
+ *   2. verifySignupSchema     email + code → a short-lived signup token
+ *   3. completeSignupSchema   token + details → the account
+ * The role is fixed to CUSTOMER server-side; nothing here can make an account
+ * staff or admin.
+ */
+export const startSignupSchema = z.object({ email: emailSchema });
+
+export const completeSignupSchema = z
+  .object({
+    /** Proof from step 2 that the email was verified. */
+    signupToken: z.string().min(20).max(2000),
+    name: z.string().trim().min(2, 'Enter your name.').max(120),
+    phone: phoneSchema,
+    password: passwordSchema,
+    confirmPassword: z.string(),
+    acceptTerms: z.literal(true, { error: 'Please accept the terms to continue.' }),
+  })
+  .refine((v) => v.password === v.confirmPassword, {
+    error: 'Passwords do not match.',
+    path: ['confirmPassword'],
+  });
+export type CompleteSignupInput = z.infer<typeof completeSignupSchema>;
+
+/** A 6-digit (configurable) code from an email. Spaces and dashes are forgiven. */
+export const emailCodeSchema = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(/[\s-]/g, ''))
+  .refine((v) => /^\d{4,8}$/.test(v), 'Enter the code from the email.');
+
+/** Step 2 of sign-up: prove the email is yours. */
+export const verifySignupSchema = z.object({ email: emailSchema, code: emailCodeSchema });
+export type VerifySignupInput = z.infer<typeof verifySignupSchema>;
+
+/** Ask for another code (sign-up or password reset). */
+export const resendCodeSchema = z.object({ email: emailSchema });
+
+export const forgotPasswordSchema = z.object({ email: emailSchema });
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z
+  .object({
+    email: emailSchema,
+    code: emailCodeSchema,
+    newPassword: passwordSchema,
+    confirmPassword: z.string(),
+  })
+  .refine((v) => v.newPassword === v.confirmPassword, {
+    error: 'Passwords do not match.',
+    path: ['confirmPassword'],
+  });
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
 export const changePasswordSchema = z
   .object({

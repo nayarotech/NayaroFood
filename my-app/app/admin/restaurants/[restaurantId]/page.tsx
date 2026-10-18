@@ -8,6 +8,7 @@ import { RestaurantStatusPill, type RestaurantStatus } from '@/components/restau
 import { RestaurantStatusActions } from '@/components/admin/restaurant-status-actions';
 import { OrderStatusBadge, type OrderStatus } from '@/components/order-status-badge';
 import { describeAction } from '@/components/admin/audit-labels';
+import { ArrowUpRight, Check, ChevronLeft } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,7 +103,7 @@ export default async function AdminRestaurantPage({ params }: PageProps<'/admin/
   return (
     <div>
       <Link href="/admin/restaurants" className="mb-3 inline-block text-sm text-ink-muted hover:text-accent-label">
-        ← Restaurants
+        <ChevronLeft aria-hidden className="size-4" /> Restaurants
       </Link>
 
       <PageHeader
@@ -114,7 +115,7 @@ export default async function AdminRestaurantPage({ params }: PageProps<'/admin/
             {r.approvedAt && <span>· Verified {formatDate(r.approvedAt)}</span>}
             {r.status === 'ACTIVE' && (
               <Link href={`/r/${r.slug}` as Route} className="font-medium text-accent-label hover:underline">
-                · Public page ↗
+                · Public page <ArrowUpRight aria-hidden className="inline size-3.5" />
               </Link>
             )}
           </span>
@@ -156,7 +157,7 @@ export default async function AdminRestaurantPage({ params }: PageProps<'/admin/
             flush
             action={
               <Link href={`/admin/orders?restaurantId=${r.id}` as Route} className="text-xs font-semibold text-accent-label hover:underline">
-                All {stats.totalOrders} orders →
+                All {stats.totalOrders} orders
               </Link>
             }
           >
@@ -214,7 +215,7 @@ export default async function AdminRestaurantPage({ params }: PageProps<'/admin/
                       ok ? 'bg-success-soft text-success' : 'bg-surface-inset text-ink-label'
                     }`}
                   >
-                    {ok ? '✓' : '–'}
+                    {ok ? <Check className="size-3" strokeWidth={3} /> : '–'}
                   </span>
                   <span className={ok ? 'text-ink' : 'text-ink-muted'}>{label}</span>
                   <span className="sr-only">{ok ? 'done' : 'missing'}</span>
@@ -241,7 +242,7 @@ export default async function AdminRestaurantPage({ params }: PageProps<'/admin/
                       rel="noreferrer"
                       className="font-mono text-xs text-accent-label hover:underline"
                     >
-                      {r.latitude.toFixed(5)}, {r.longitude.toFixed(5)} ↗
+                      {r.latitude.toFixed(5)}, {r.longitude.toFixed(5)}
                     </a>
                   ) : (
                     <span className="text-warning">Not set</span>

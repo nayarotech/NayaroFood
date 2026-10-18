@@ -1,9 +1,10 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
+import { RestaurantRole } from '@nayaro/shared';
 import webpush from 'web-push';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { db } from '../db/client.js';
-import { pushSubscriptions } from '../db/schema/index.js';
+import { pushSubscriptions, restaurantUsers } from '../db/schema/index.js';
 
 /**
  * Web Push delivery.
@@ -44,51 +45,88 @@ export async function pushToRestaurant(restaurantId: number, payload: PushPayloa
   if (!configured) return;
 
   try {
+    // Kitchen alerts go to the restaurant team, not to its riders' phones.
     const subscriptions = await db
-      .select()
+      .select({
+        id: pushSubscriptions.id,
+        endpoint: pushSubscriptions.endpoint,
+        p256dh: pushSubscriptions.p256dh,
+        auth: pushSubscriptions.auth,
+      })
       .from(pushSubscriptions)
-      .where(eq(pushSubscriptions.restaurantId, restaurantId));
+      .innerJoin(
+        restaurantUsers,
+        and(eq(restaurantUsers.userId, pushSubscriptions.userId), eq(restaurantUsers.restaurantId, restaurantId)),
+      )
+      .where(and(eq(pushSubscriptions.restaurantId, restaurantId), ne(restaurantUsers.role, RestaurantRole.RIDER)));
 
-    if (subscriptions.length === 0) return;
-
-    const body = JSON.stringify(payload);
-
-    await Promise.all(
-      subscriptions.map(async (subscription) => {
-        try {
-          await webpush.sendNotification(
-            {
-              endpoint: subscription.endpoint,
-              keys: { p256dh: subscription.p256dh, auth: subscription.auth },
-            },
-            body,
-            { TTL: 60 * 60, urgency: 'high' },
-          );
-          await db
-            .update(pushSubscriptions)
-            .set({ lastSentAt: new Date(), lastFailureAt: null, lastError: null })
-            .where(eq(pushSubscriptions.id, subscription.id));
-        } catch (error) {
-          const status = (error as { statusCode?: number }).statusCode;
-          if (status === 404 || status === 410) {
-            // The browser revoked this subscription; it will never work again.
-            await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, subscription.id));
-            return;
-          }
-          await db
-            .update(pushSubscriptions)
-            .set({
-              lastFailureAt: new Date(),
-              lastError: error instanceof Error ? error.message : String(error),
-            })
-            .where(eq(pushSubscriptions.id, subscription.id));
-          logger.warn({ err: error, restaurantId, status }, 'Push send failed');
-        }
-      }),
-    );
+    await sendToSubscriptions(subscriptions, payload, { restaurantId });
   } catch (error) {
     logger.error({ err: error, restaurantId }, 'pushToRestaurant threw');
   }
+}
+
+/** Push to one person's devices — a rider's new assignment. Never throws. */
+export async function pushToUser(userId: number, payload: PushPayload): Promise<void> {
+  if (!configured) return;
+  try {
+    const subscriptions = await db
+      .select({
+        id: pushSubscriptions.id,
+        endpoint: pushSubscriptions.endpoint,
+        p256dh: pushSubscriptions.p256dh,
+        auth: pushSubscriptions.auth,
+      })
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.userId, userId));
+    await sendToSubscriptions(subscriptions, payload, { userId });
+  } catch (error) {
+    logger.error({ err: error, userId }, 'pushToUser threw');
+  }
+}
+
+async function sendToSubscriptions(
+  subscriptions: { id: number; endpoint: string; p256dh: string; auth: string }[],
+  payload: PushPayload,
+  context: Record<string, unknown>,
+): Promise<void> {
+  if (subscriptions.length === 0) return;
+
+  const body = JSON.stringify(payload);
+
+  await Promise.all(
+    subscriptions.map(async (subscription) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: subscription.endpoint,
+            keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+          },
+          body,
+          { TTL: 60 * 60, urgency: 'high' },
+        );
+        await db
+          .update(pushSubscriptions)
+          .set({ lastSentAt: new Date(), lastFailureAt: null, lastError: null })
+          .where(eq(pushSubscriptions.id, subscription.id));
+      } catch (error) {
+        const status = (error as { statusCode?: number }).statusCode;
+        if (status === 404 || status === 410) {
+          // The browser revoked this subscription; it will never work again.
+          await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, subscription.id));
+          return;
+        }
+        await db
+          .update(pushSubscriptions)
+          .set({
+            lastFailureAt: new Date(),
+            lastError: error instanceof Error ? error.message : String(error),
+          })
+          .where(eq(pushSubscriptions.id, subscription.id));
+        logger.warn({ err: error, ...context, status }, 'Push send failed');
+      }
+    }),
+  );
 }
 
 export async function removeSubscription(restaurantId: number, endpoint: string): Promise<void> {

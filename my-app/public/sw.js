@@ -45,9 +45,11 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      // Focus an existing dashboard tab rather than opening a duplicate.
+      // Reuse an open tab of this app (dashboard, rider app …) rather than opening a duplicate.
+      const area = new URL(target, self.location.origin).pathname.split('/')[1];
       for (const client of clients) {
-        if (client.url.includes('/dashboard') && 'focus' in client) {
+        const path = new URL(client.url).pathname;
+        if (path.split('/')[1] === area && 'focus' in client) {
           client.navigate(target);
           return client.focus();
         }

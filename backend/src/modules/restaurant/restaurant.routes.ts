@@ -1,8 +1,12 @@
 import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import {
+  StaffPermission,
   WhatsAppStatus,
   confirmWhatsAppVerificationSchema,
+  createRemarkSchema,
+  idSchema,
+  type CreateRemarkInput,
   fromDecimalString,
   maskPhone,
   requestWhatsAppVerificationSchema,
@@ -22,20 +26,36 @@ import { pushEnabled, pushToRestaurant, removeSubscription, vapidPublicKey } fro
 import { listenerCount, subscribe } from '../realtime/events.js';
 import { sendVerificationCode } from '../whatsapp/whatsapp.service.js';
 import { otpRequestLimiter, otpVerifyLimiter } from '../../http/middleware/rate-limit.js';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import {
+  customerRemarks,
   customers,
+  orderReviews,
   orders,
   pushSubscriptions,
   restaurantCustomers,
   restaurantRankings,
   restaurantSettings,
   restaurants,
+  users,
   whatsappVerifications,
 } from '../../db/schema/index.js';
-import { authOf, requireAuth, requireRestaurant, tenantOf } from '../../http/middleware/auth.js';
-import { asyncHandler, validateBody } from '../../http/middleware/validate.js';
+import {
+  authOf,
+  requireAuth,
+  requirePermission,
+  requireRestaurant,
+  requireStaff,
+  tenantOf,
+} from '../../http/middleware/auth.js';
+import {
+  asyncHandler,
+  validateBody,
+  validateParams,
+  validatedParams,
+} from '../../http/middleware/validate.js';
+import { flagsFor } from '../customer/remarks.service.js';
 import { badRequest, conflict, notFound, tooManyRequests, unprocessable } from '../../http/errors.js';
 import { created, noContent, ok } from '../../http/respond.js';
 import {
@@ -106,6 +126,7 @@ restaurantRouter.get(
  */
 restaurantRouter.get(
   '/ranking',
+  requireStaff,
   asyncHandler(async (req, res) => {
     const restaurantId = tenantOf(req);
 
@@ -196,6 +217,7 @@ restaurantRouter.get(
 
 restaurantRouter.patch(
   '/profile',
+  requirePermission(StaffPermission.SETTINGS),
   validateBody(updateRestaurantProfileSchema),
   asyncHandler(async (req, res) => {
     const restaurantId = tenantOf(req);
@@ -226,6 +248,7 @@ restaurantRouter.patch(
  */
 restaurantRouter.patch(
   '/location',
+  requirePermission(StaffPermission.SETTINGS),
   validateBody(updateRestaurantLocationSchema),
   asyncHandler(async (req, res) => {
     const restaurantId = tenantOf(req);
@@ -247,6 +270,7 @@ restaurantRouter.patch(
 
 restaurantRouter.patch(
   '/settings',
+  requirePermission(StaffPermission.SETTINGS),
   validateBody(updateRestaurantSettingsSchema),
   asyncHandler(async (req, res) => {
     const restaurantId = tenantOf(req);
@@ -275,6 +299,7 @@ restaurantRouter.patch(
 /** The restaurant's own open/closed switch, independent of platform status. */
 restaurantRouter.patch(
   '/open',
+  requirePermission(StaffPermission.SETTINGS),
   validateBody(z.object({ isOpen: z.boolean() })),
   asyncHandler(async (req, res) => {
     const restaurantId = tenantOf(req);
@@ -306,6 +331,7 @@ const requireWhatsApp: RequestHandler = (_req, _res, next) => {
 
 restaurantRouter.post(
   '/whatsapp/request',
+  requirePermission(StaffPermission.SETTINGS),
   requireWhatsApp,
   otpRequestLimiter,
   validateBody(requestWhatsAppVerificationSchema),
@@ -382,6 +408,7 @@ restaurantRouter.post(
 
 restaurantRouter.post(
   '/whatsapp/confirm',
+  requirePermission(StaffPermission.SETTINGS),
   requireWhatsApp,
   otpVerifyLimiter,
   validateBody(confirmWhatsAppVerificationSchema),
@@ -453,6 +480,7 @@ restaurantRouter.post(
  */
 restaurantRouter.get(
   '/customers',
+  requirePermission(StaffPermission.CUSTOMERS),
   asyncHandler(async (req, res) => {
     const restaurantId = tenantOf(req);
 
@@ -474,6 +502,18 @@ restaurantRouter.get(
       .limit(200);
 
     const repeat = rows.filter((row) => row.orderCount > 1);
+    const ids = rows.map((row) => row.customerId);
+    const [flags, mineRows] = await Promise.all([
+      flagsFor(ids),
+      ids.length === 0
+        ? Promise.resolve([] as { customerId: number; count: number }[])
+        : db
+            .select({ customerId: customerRemarks.customerId, count: sql<number>`count(*)` })
+            .from(customerRemarks)
+            .where(and(eq(customerRemarks.restaurantId, restaurantId), inArray(customerRemarks.customerId, ids)))
+            .groupBy(customerRemarks.customerId),
+    ]);
+    const mine = new Map(mineRows.map((row) => [row.customerId, Number(row.count)]));
 
     ok(res, {
       summary: {
@@ -487,7 +527,169 @@ restaurantRouter.get(
         ...row,
         totalSpentMinor: fromDecimalString(row.totalSpent),
         isRepeat: row.orderCount > 1,
+        ...(flags.get(row.customerId) ?? { reports: 0, reportingRestaurants: 0, blocked: false }),
+        myReports: mine.get(row.customerId) ?? 0,
       })),
+    });
+  }),
+);
+
+/* ------------------------------------------------------------------ */
+/* Customer remarks — incident reports for the platform                */
+/* ------------------------------------------------------------------ */
+
+const customerParam = z.object({ customerId: idSchema });
+
+/** A restaurant can only report people who have actually ordered from it. */
+async function assertOwnCustomer(restaurantId: number, customerId: number): Promise<void> {
+  const [row] = await db
+    .select({ id: restaurantCustomers.id })
+    .from(restaurantCustomers)
+    .where(and(eq(restaurantCustomers.restaurantId, restaurantId), eq(restaurantCustomers.customerId, customerId)))
+    .limit(1);
+  if (!row) throw notFound('This customer hasn’t ordered from you.', 'CUSTOMER_NOT_FOUND');
+}
+
+/** This restaurant's own remarks about a customer, plus platform-wide counts. */
+restaurantRouter.get(
+  '/customers/:customerId/remarks',
+  requirePermission(StaffPermission.CUSTOMERS),
+  validateParams(customerParam),
+  asyncHandler(async (req, res) => {
+    const restaurantId = tenantOf(req);
+    const { customerId } = validatedParams<{ customerId: number }>(res);
+    await assertOwnCustomer(restaurantId, customerId);
+
+    const [remarks, flags] = await Promise.all([
+      db
+        .select({
+          id: customerRemarks.id,
+          reason: customerRemarks.reason,
+          note: customerRemarks.note,
+          orderId: customerRemarks.orderId,
+          orderNumber: orders.orderNumber,
+          createdAt: customerRemarks.createdAt,
+          createdBy: users.name,
+        })
+        .from(customerRemarks)
+        .leftJoin(orders, and(eq(orders.id, customerRemarks.orderId), eq(orders.restaurantId, restaurantId)))
+        .leftJoin(users, eq(users.id, customerRemarks.createdByUserId))
+        .where(and(eq(customerRemarks.restaurantId, restaurantId), eq(customerRemarks.customerId, customerId)))
+        .orderBy(desc(customerRemarks.createdAt)),
+      flagsFor([customerId]),
+    ]);
+
+    ok(res, { remarks, ...flags.get(customerId)! });
+  }),
+);
+
+restaurantRouter.post(
+  '/customers/:customerId/remarks',
+  requirePermission(StaffPermission.CUSTOMERS),
+  validateParams(customerParam),
+  validateBody(createRemarkSchema),
+  asyncHandler(async (req, res) => {
+    const restaurantId = tenantOf(req);
+    const { customerId } = validatedParams<{ customerId: number }>(res);
+    const input = req.body as CreateRemarkInput;
+    await assertOwnCustomer(restaurantId, customerId);
+
+    if (input.orderId) {
+      // The order must be this customer's, at this restaurant.
+      const [order] = await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(
+          and(eq(orders.id, input.orderId), eq(orders.restaurantId, restaurantId), eq(orders.customerId, customerId)),
+        )
+        .limit(1);
+      if (!order) throw badRequest('That order isn’t this customer’s order at your restaurant.', 'ORDER_MISMATCH');
+
+      const [duplicate] = await db
+        .select({ id: customerRemarks.id })
+        .from(customerRemarks)
+        .where(
+          and(
+            eq(customerRemarks.restaurantId, restaurantId),
+            eq(customerRemarks.orderId, input.orderId),
+            eq(customerRemarks.reason, input.reason),
+          ),
+        )
+        .limit(1);
+      if (duplicate) throw conflict('You’ve already reported this for that order.', 'REMARK_EXISTS');
+    }
+
+    const [result] = await db.insert(customerRemarks).values({
+      customerId,
+      restaurantId,
+      orderId: input.orderId ?? null,
+      reason: input.reason,
+      note: input.note,
+      createdByUserId: authOf(req).userId,
+    });
+    created(res, { id: result.insertId });
+  }),
+);
+
+/** A restaurant may withdraw its own remark (e.g. filed on the wrong customer). */
+restaurantRouter.delete(
+  '/remarks/:id',
+  requirePermission(StaffPermission.CUSTOMERS),
+  validateParams(z.object({ id: idSchema })),
+  asyncHandler(async (req, res) => {
+    const restaurantId = tenantOf(req);
+    const { id } = validatedParams<{ id: number }>(res);
+    const result = await db
+      .delete(customerRemarks)
+      .where(and(eq(customerRemarks.id, id), eq(customerRemarks.restaurantId, restaurantId)));
+    if (result[0].affectedRows === 0) throw notFound('Remark not found.', 'REMARK_NOT_FOUND');
+    noContent(res);
+  }),
+);
+
+/* ------------------------------------------------------------------ */
+/* Reviews — customers' ratings and private comments                   */
+/* ------------------------------------------------------------------ */
+
+restaurantRouter.get(
+  '/reviews',
+  requirePermission(StaffPermission.REVIEWS),
+  asyncHandler(async (req, res) => {
+    const restaurantId = tenantOf(req);
+    const [summaryRows, rows] = await Promise.all([
+      db
+        .select({ rating: orderReviews.rating, count: sql<number>`count(*)` })
+        .from(orderReviews)
+        .where(eq(orderReviews.restaurantId, restaurantId))
+        .groupBy(orderReviews.rating),
+      db
+        .select({
+          id: orderReviews.id,
+          rating: orderReviews.rating,
+          comment: orderReviews.comment,
+          createdAt: orderReviews.createdAt,
+          updatedAt: orderReviews.updatedAt,
+          orderNumber: orders.orderNumber,
+          customerName: customers.name,
+        })
+        .from(orderReviews)
+        .innerJoin(orders, eq(orders.id, orderReviews.orderId))
+        .innerJoin(customers, eq(customers.id, orderReviews.customerId))
+        .where(eq(orderReviews.restaurantId, restaurantId))
+        .orderBy(desc(orderReviews.createdAt))
+        .limit(200),
+    ]);
+
+    const distribution = [5, 4, 3, 2, 1].map((stars) => ({
+      stars,
+      count: Number(summaryRows.find((r) => r.rating === stars)?.count ?? 0),
+    }));
+    const total = distribution.reduce((n, d) => n + d.count, 0);
+    const average = total > 0 ? distribution.reduce((n, d) => n + d.stars * d.count, 0) / total : null;
+
+    ok(res, {
+      summary: { total, average: average === null ? null : Math.round(average * 10) / 10, distribution },
+      reviews: rows,
     });
   }),
 );
@@ -499,6 +701,7 @@ restaurantRouter.get(
 /** Live event stream for an open dashboard. Scoped to the caller's tenant. */
 restaurantRouter.get(
   '/events',
+  requireStaff,
   asyncHandler(async (req, res) => {
     subscribe(tenantOf(req), res);
   }),

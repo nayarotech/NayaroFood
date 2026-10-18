@@ -42,10 +42,23 @@ export interface PublicRestaurantSummary {
   rankScore: number;
   /** True when a Super Admin has pinned this restaurant to a fixed slot. */
   promoted: boolean;
+  /**
+   * Customers' average rating, 1–5, one decimal. Only the average is public;
+   * the written comments are private to the restaurant. Null until reviewed.
+   */
+  rating: { average: number; count: number } | null;
   /** Present only when the caller supplied coordinates. */
   distanceKm: number | null;
   delivery: DeliveryQuote | null;
   deliveryFrom: { minFeeMinor: number; maxSupportedKm: number } | null;
+}
+
+const ratingAvgSql = sql<string | null>`(select round(avg(r.rating), 1) from order_reviews r where r.restaurant_id = ${restaurants.id})`;
+const ratingCountSql = sql<number>`(select count(*) from order_reviews r where r.restaurant_id = ${restaurants.id})`;
+
+function toRating(average: string | number | null, count: number | string): { average: number; count: number } | null {
+  const total = Number(count ?? 0);
+  return total > 0 && average !== null ? { average: Number(average), count: total } : null;
 }
 
 const activeRestaurantFilter = and(
@@ -143,6 +156,8 @@ export async function listPublicRestaurants(params: {
       name: restaurants.name,
       description: restaurants.description,
       logoUrl: restaurants.logoUrl,
+      ratingAvg: ratingAvgSql,
+      ratingCount: ratingCountSql,
       coverUrl: restaurants.coverUrl,
       address: restaurants.address,
       latitude: restaurants.latitude,
@@ -209,6 +224,7 @@ export async function listPublicRestaurants(params: {
         categories: categoryRows.map((c) => c.name),
         rankScore: row.rankScore ?? 0,
         promoted: row.pinnedPosition !== null,
+        rating: toRating(row.ratingAvg, row.ratingCount),
         distanceKm,
         delivery,
         deliveryFrom:
@@ -258,6 +274,8 @@ export async function getPublicRestaurant(
       name: restaurants.name,
       description: restaurants.description,
       logoUrl: restaurants.logoUrl,
+      ratingAvg: ratingAvgSql,
+      ratingCount: ratingCountSql,
       coverUrl: restaurants.coverUrl,
       address: restaurants.address,
       phone: restaurants.phone,
@@ -357,6 +375,7 @@ export async function getPublicRestaurant(
     categories: [...menuByCategory.values()].map((c) => c.name),
     rankScore: 0,
     promoted: false,
+    rating: toRating(row.ratingAvg, row.ratingCount),
     distanceKm,
     delivery,
     deliveryFrom:

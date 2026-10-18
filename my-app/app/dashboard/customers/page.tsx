@@ -1,4 +1,7 @@
 import { fetchTenant } from '@/lib/dashboard-api';
+import { can, getSession } from '@/lib/session';
+import { NoAccess } from '@/components/no-access';
+import { CustomerReportButton } from '@/components/customer-report-button';
 import { formatMoney } from '@/lib/format';
 
 export const metadata = { title: 'Customers' };
@@ -15,10 +18,16 @@ interface CustomersResponse {
     cancelledCount: number;
     lastOrderAt: string | null;
     isRepeat: boolean;
+    reports: number;
+    reportingRestaurants: number;
+    blocked: boolean;
+    myReports: number;
   }[];
 }
 
 export default async function CustomersPage() {
+  const session = await getSession();
+  if (!can(session, 'CUSTOMERS')) return <NoAccess what="customers" />;
   const data = await fetchTenant<CustomersResponse>('/restaurant/customers');
 
   return (
@@ -26,7 +35,7 @@ export default async function CustomersPage() {
       <header className="mb-5">
         <h1 className="font-display text-xl font-bold tracking-tight">Customers</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Who orders from you, and who comes back. Only your own customers appear here.
+          Who orders from you and who comes back. Report customers who don’t pick up or cancel at the door.
         </p>
       </header>
 
@@ -48,13 +57,15 @@ export default async function CustomersPage() {
           </dl>
 
           <div className="overflow-x-auto rounded-ny-card border border-line bg-surface">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b border-line bg-surface-muted text-left text-xs text-ink-label">
                   <th className="px-4 py-2.5 font-medium">Customer</th>
                   <th className="px-4 py-2.5 text-right font-medium">Orders</th>
                   <th className="px-4 py-2.5 text-right font-medium">Spent</th>
                   <th className="px-4 py-2.5 text-right font-medium">Last order</th>
+                  <th className="px-4 py-2.5 font-medium">Reliability</th>
+                  <th className="px-4 py-2.5"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -64,8 +75,8 @@ export default async function CustomersPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{customer.name}</span>
                         {customer.isRepeat && (
-                          <span className="rounded-ny-pill bg-accent-pill px-1.5 py-0.5 text-[10px] font-bold text-accent-label">
-                            REPEAT
+                          <span className="rounded-ny-pill bg-accent-pill px-1.5 py-0.5 text-[11px] font-medium text-accent-label">
+                            Repeat
                           </span>
                         )}
                       </div>
@@ -79,6 +90,20 @@ export default async function CustomersPage() {
                       {customer.lastOrderAt
                         ? new Date(customer.lastOrderAt).toLocaleDateString('en-GB')
                         : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs">
+                      {customer.blocked ? (
+                        <span className="font-medium text-danger">Blocked by Nayaro</span>
+                      ) : customer.reports > 0 ? (
+                        <span className="text-warning">
+                          Reported {customer.reports}×{customer.myReports > 0 ? ` (${customer.myReports} by you)` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-ink-label">No reports</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-2.5 text-right">
+                      <CustomerReportButton customerId={customer.customerId} customerName={customer.name} />
                     </td>
                   </tr>
                 ))}

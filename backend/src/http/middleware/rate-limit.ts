@@ -51,6 +51,16 @@ export const otpRequestLimiter = limiter({
   },
 });
 
+/** Emailing a code: five per hour per address and IP. Resend also costs money. */
+export const emailCodeLimiter = limiter({
+  windowMs: 60 * 60_000,
+  limit: 5,
+  keyGenerator: (req) => {
+    const email = typeof req.body?.email === 'string' ? req.body.email.toLowerCase() : '';
+    return `${ipKeyGenerator(req.ip ?? "")}:${email}`;
+  },
+});
+
 /** Guessing an OTP. The per-row attempt ceiling is the real defence; this is depth. */
 export const otpVerifyLimiter = limiter({ windowMs: 15 * 60_000, limit: 20 });
 

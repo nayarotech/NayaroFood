@@ -6,6 +6,7 @@ import { formatDateTime, formatDistance, formatMoney } from '@/lib/format';
 import { PageHeader, Panel } from '@/components/admin/page-header';
 import { ORDER_STATUS_LABEL, OrderStatusBadge, type OrderStatus } from '@/components/order-status-badge';
 import { AdminOrderActions } from '@/components/admin/admin-order-actions';
+import { ChevronLeft } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,7 +72,7 @@ export default async function AdminOrderPage({ params }: PageProps<'/admin/order
   return (
     <div>
       <Link href="/admin/orders" className="mb-3 inline-block text-sm text-ink-muted hover:text-accent-label">
-        ← Orders
+        <ChevronLeft aria-hidden className="size-4" /> Orders
       </Link>
 
       <PageHeader
@@ -180,7 +181,7 @@ export default async function AdminOrderPage({ params }: PageProps<'/admin/order
               href={`/admin/orders?q=${encodeURIComponent(order.customer.phone)}` as Route}
               className="mt-2 inline-block text-xs font-semibold text-accent-label hover:underline"
             >
-              All orders from this customer →
+              All orders from this customer
             </Link>
           </Panel>
 
@@ -194,7 +195,7 @@ export default async function AdminOrderPage({ params }: PageProps<'/admin/order
               rel="noreferrer"
               className="mt-2 inline-block text-xs font-semibold text-accent-label hover:underline"
             >
-              Open pin in Google Maps ↗
+              Open pin in Google Maps
             </a>
           </Panel>
 
@@ -212,7 +213,7 @@ export default async function AdminOrderPage({ params }: PageProps<'/admin/order
               <ul className="space-y-2 text-sm">
                 {order.notifications.map((n) => (
                   <li key={n.id}>
-                    <span className="font-medium">{n.channel}</span> → <span className="font-mono text-xs">{n.recipient}</span>{' '}
+                    <span className="font-medium">{n.channel}</span> to <span className="font-mono text-xs">{n.recipient}</span>{' '}
                     <span className={n.status === 'SENT' ? 'text-success' : n.status === 'FAILED' ? 'text-danger' : 'text-ink-label'}>
                       {n.status.toLowerCase()}
                     </span>

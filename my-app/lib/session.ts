@@ -1,5 +1,10 @@
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { API_URL } from '@/lib/api';
+import type { StaffPermission, UserRole } from '@/lib/roles';
+
+export type { StaffPermission, UserRole } from '@/lib/roles';
+export { can, homeFor } from '@/lib/roles';
 
 /**
  * Server-side session lookup.
@@ -9,12 +14,14 @@ import { API_URL } from '@/lib/api';
  * API decide. That keeps one authority on what a session means.
  */
 
+
 export interface SessionUser {
   id: number;
-  email: string;
+  /** Riders may have no email. */
+  email: string | null;
   name: string;
   phone: string | null;
-  role: 'SUPER_ADMIN' | 'RESTAURANT_ADMIN';
+  role: UserRole;
 }
 
 export interface SessionRestaurant {
@@ -24,14 +31,26 @@ export interface SessionRestaurant {
   status: 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'INACTIVE';
   statusReason?: string | null;
   onboardingStep: string;
+  /** The signed-in person's role in this restaurant, and what they may do. */
+  role: 'OWNER' | 'MANAGER' | 'STAFF' | 'RIDER';
+  permissions: StaffPermission[];
+}
+
+export interface SessionCustomer {
+  id: number;
+  name: string;
+  phone: string;
+  email: string | null;
 }
 
 export interface Session {
   user: SessionUser;
   restaurant: SessionRestaurant | null;
+  customer: SessionCustomer | null;
 }
 
-export async function getSession(): Promise<Session | null> {
+/** Cached per request: the header, layout and page share one lookup. */
+export const getSession = cache(async (): Promise<Session | null> => {
   const store = await cookies();
   const token = store.get('access_token');
   if (!token) return null;
@@ -48,4 +67,4 @@ export async function getSession(): Promise<Session | null> {
     // The API being down must not crash every page that renders a header.
     return null;
   }
-}
+});

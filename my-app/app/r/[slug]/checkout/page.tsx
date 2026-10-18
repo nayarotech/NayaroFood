@@ -1,6 +1,8 @@
 import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
 import type { Route } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { getSession } from '@/lib/session';
 import { ApiError, apiGet } from '@/lib/api';
 import type { RestaurantDetail } from '@/lib/types';
 import { CheckoutForm } from '@/components/order/checkout-form';
@@ -18,6 +20,24 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<'
   if (lat && lng) {
     search.set('latitude', lat);
     search.set('longitude', lng);
+  }
+
+  // Ordering needs an account; come straight back here after signing in.
+  const session = await getSession();
+  if (!session) {
+    const back = `/r/${slug}/checkout${lat && lng ? `?lat=${lat}&lng=${lng}` : ''}`;
+    redirect(`/login?next=${encodeURIComponent(back)}` as Route);
+  }
+  if (session.user.role !== 'CUSTOMER' || !session.customer) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-16 text-center">
+        <h1 className="font-display text-xl font-bold">Use a customer account to order</h1>
+        <p className="mt-2 text-sm text-ink-muted">
+          You’re signed in with a restaurant or admin account, which can’t place orders. Sign out and sign in (or
+          create an account) as a customer.
+        </p>
+      </div>
+    );
   }
 
   let restaurant: RestaurantDetail;
@@ -40,9 +60,10 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<'
     <div className="mx-auto max-w-5xl px-4 py-6 pb-16">
       <Link
         href={`/r/${slug}${lat && lng ? `?lat=${lat}&lng=${lng}` : ''}` as Route}
-        className="text-sm text-ink-muted hover:text-accent-label"
+        className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink"
       >
-        ← Back to {restaurant.name}
+        <ChevronLeft aria-hidden className="size-4" />
+        {restaurant.name}
       </Link>
       <h1 className="mt-3 font-display text-3xl font-bold tracking-tight">Checkout</h1>
       <p className="mt-1 text-sm text-ink-muted">
@@ -60,6 +81,7 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<'
         menu={menu}
         delivery={restaurant.delivery}
         location={lat && lng ? { lat: Number(lat), lng: Number(lng) } : null}
+        customer={{ name: session.customer.name, phone: session.customer.phone }}
       />
     </div>
   );
