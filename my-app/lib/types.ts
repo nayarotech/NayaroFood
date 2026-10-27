@@ -1,3 +1,4 @@
+import type { MenuOptionGroup, RestaurantSchedule } from '@nayaro/shared';
 /** Response shapes served by the public API. */
 
 export interface DeliveryZoneRule {
@@ -27,6 +28,7 @@ export interface RestaurantSummary {
   coverUrl: string | null;
   address: string;
   isOpen: boolean;
+  canSchedule: boolean;
   acceptsOrders: boolean;
   categories: string[];
   /** Public average only; comments stay private to the restaurant. */
@@ -37,6 +39,7 @@ export interface RestaurantSummary {
 }
 
 export interface MenuItem {
+  optionGroups: MenuOptionGroup[];
   id: number;
   name: string;
   description: string | null;
@@ -53,6 +56,8 @@ export interface RestaurantDetail extends RestaurantSummary {
   phone: string;
   minOrderMinor: number;
   currency: string;
+  schedule: RestaurantSchedule;
+  slots: string[];
   zones: DeliveryZoneRule[];
   menu: { id: number; name: string; items: MenuItem[] }[];
 }

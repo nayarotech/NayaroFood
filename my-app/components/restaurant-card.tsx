@@ -65,7 +65,7 @@ export function RestaurantCard({
         )}
         {closed && (
           <span className="absolute top-2.5 left-2.5 rounded-ny bg-ink/80 px-2 py-0.5 text-xs font-medium text-white">
-            Closed
+            {restaurant.canSchedule ? 'Closed now · Schedule ahead' : 'Closed'}
           </span>
         )}
       </div>

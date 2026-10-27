@@ -14,6 +14,8 @@ interface MyOrder {
   orderNumber: string;
   status: OrderStatus;
   placedAt: string;
+  scheduledFor: string | null;
+  scheduleTimezone: string | null;
   totalMinor: number;
   items: string;
   restaurantName: string;
@@ -55,6 +57,7 @@ export default async function MyOrdersPage({ searchParams }: PageProps<'/account
                 <OrderStatusBadge status={order.status} />
               </div>
               <p className="mt-0.5 truncate text-sm text-ink-muted">{order.items}</p>
+              {order.scheduledFor && <p className="mt-1 text-xs text-accent-label">Scheduled dispatch: {new Intl.DateTimeFormat('en-GB', { timeZone: order.scheduleTimezone ?? 'Asia/Kathmandu', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(order.scheduledFor))} ({order.scheduleTimezone})</p>}
               <p className="mt-0.5 text-xs text-ink-label">
                 #{order.orderNumber} · {formatDateTime(order.placedAt)} · {formatMoney(order.totalMinor)}
               </p>

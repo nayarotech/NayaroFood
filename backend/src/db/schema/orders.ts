@@ -1,7 +1,9 @@
+import type { SelectedMenuOption } from '@nayaro/shared';
 import { relations } from 'drizzle-orm';
 import {
   index,
   int,
+  json,
   mysqlEnum,
   mysqlTable,
   text,
@@ -92,6 +94,9 @@ export const orders = mysqlTable(
     /** The rider's own note about the delivery ("left at gate", "no answer"). */
     deliveryNote: varchar('delivery_note', { length: 500 }),
 
+    scheduledFor: timestamp('scheduled_for'),
+    prepareAt: timestamp('prepare_at'),
+    scheduleTimezone: varchar('schedule_timezone', { length: 64 }),
     placedAt: timestamp('placed_at').defaultNow().notNull(),
     acceptedAt: timestamp('accepted_at'),
     readyAt: timestamp('ready_at'),
@@ -103,6 +108,7 @@ export const orders = mysqlTable(
     uniqueIndex('uq_orders_tracking_code').on(t.trackingCode),
     uniqueIndex('uq_orders_idempotency').on(t.restaurantId, t.idempotencyKey),
     // Leading restaurant_id keeps every dashboard query inside one tenant's rows.
+    index('idx_orders_schedule').on(t.restaurantId, t.scheduledFor, t.status),
     index('idx_orders_dashboard').on(t.restaurantId, t.status, t.placedAt),
     index('idx_orders_restaurant_placed').on(t.restaurantId, t.placedAt),
     index('idx_orders_customer').on(t.customerId, t.placedAt),
@@ -129,6 +135,7 @@ export const orderItems = mysqlTable(
       .references(() => restaurants.id, { onDelete: 'restrict' }),
     /** Null once the menu item is hard-deleted; the snapshot below survives. */
     foodItemId: fk('food_item_id').references(() => foodItems.id, { onDelete: 'set null' }),
+    selections: json('selections').$type<SelectedMenuOption[]>(),
     nameSnapshot: varchar('name_snapshot', { length: 150 }).notNull(),
     unitPrice: money('unit_price').notNull(),
     quantity: int('quantity').notNull(),

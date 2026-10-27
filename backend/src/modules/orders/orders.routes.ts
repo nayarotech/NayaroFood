@@ -1,6 +1,7 @@
+import { menuItemLabel } from '@nayaro/shared';
 import { platformDate, platformDayStart } from '../../lib/platform-day.js';
 import { Router } from 'express';
-import { and, asc, desc, eq, gte, inArray, like, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
 import {
   Actor,
   OrderStatus,
@@ -103,6 +104,9 @@ publicOrdersRouter.post(
         trackingCode: orders.trackingCode,
         status: orders.status,
         placedAt: orders.placedAt,
+        scheduledFor: orders.scheduledFor,
+        prepareAt: orders.prepareAt,
+        scheduleTimezone: orders.scheduleTimezone,
         subtotal: orders.subtotal,
         deliveryFee: orders.deliveryFee,
         total: orders.total,
@@ -121,7 +125,7 @@ publicOrdersRouter.post(
 
     const [items, history] = await Promise.all([
       db
-        .select({ name: orderItems.nameSnapshot, quantity: orderItems.quantity, lineTotal: orderItems.lineTotal })
+        .select({ name: orderItems.nameSnapshot, selections: orderItems.selections, quantity: orderItems.quantity, lineTotal: orderItems.lineTotal })
         .from(orderItems)
         .where(eq(orderItems.orderId, order.id)),
       db
@@ -136,6 +140,9 @@ publicOrdersRouter.post(
       trackingCode: order.trackingCode,
       status: order.status,
       placedAt: order.placedAt,
+    scheduledFor: order.scheduledFor,
+    prepareAt: order.prepareAt,
+    scheduleTimezone: order.scheduleTimezone,
       restaurant: { name: order.restaurantName, slug: order.restaurantSlug },
       deliveryAddress: order.deliveryAddress,
       distanceKm: order.distanceKm,
@@ -143,7 +150,8 @@ publicOrdersRouter.post(
       deliveryFeeMinor: fromDecimalString(order.deliveryFee),
       totalMinor: fromDecimalString(order.total),
       items: items.map((item) => ({
-        name: item.name,
+        name: menuItemLabel(item.name, item.selections),
+        selections: item.selections ?? [],
         quantity: item.quantity,
         lineTotalMinor: fromDecimalString(item.lineTotal),
       })),
@@ -262,7 +270,7 @@ async function loadTracking(code: string) {
   const [items, history] = await Promise.all([
     db
       .select({
-        name: orderItems.nameSnapshot,
+        name: orderItems.nameSnapshot, selections: orderItems.selections,
         quantity: orderItems.quantity,
         unitPrice: orderItems.unitPrice,
         lineTotal: orderItems.lineTotal,
@@ -287,6 +295,9 @@ async function loadTracking(code: string) {
     orderNumber: order.orderNumber,
     status: order.status,
     placedAt: order.placedAt,
+    scheduledFor: order.scheduledFor,
+    prepareAt: order.prepareAt,
+    scheduleTimezone: order.scheduleTimezone,
     acceptedAt: order.acceptedAt,
     readyAt: order.readyAt,
     deliveredAt: order.deliveredAt,
@@ -312,7 +323,8 @@ async function loadTracking(code: string) {
     deliveryFeeMinor: fromDecimalString(order.deliveryFee),
     totalMinor: fromDecimalString(order.total),
     items: items.map((item) => ({
-      name: item.name,
+      name: menuItemLabel(item.name, item.selections),
+      selections: item.selections ?? [],
       quantity: item.quantity,
       unitPriceMinor: fromDecimalString(item.unitPrice),
       lineTotalMinor: fromDecimalString(item.lineTotal),
@@ -344,6 +356,8 @@ tenantOrdersRouter.get(
     const query = validatedQuery<OrderListQueryInput>(res);
 
     const filters = [eq(orders.restaurantId, restaurantId)];
+    if (query.schedule === 'upcoming') filters.push(gt(orders.prepareAt, new Date()), inArray(orders.status, [OrderStatus.PENDING, OrderStatus.ACCEPTED]));
+    if (query.schedule === 'due') filters.push(or(isNull(orders.prepareAt), lte(orders.prepareAt, new Date()))!);
     if (query.status) {
       const statuses = Array.isArray(query.status) ? query.status : [query.status];
       filters.push(inArray(orders.status, statuses));
@@ -370,6 +384,7 @@ tenantOrdersRouter.get(
       .where(where);
 
     const orderBy =
+      query.schedule === 'upcoming' ? [asc(orders.prepareAt)] :
       query.sort === 'oldest'
         ? [asc(orders.placedAt)]
         : query.sort === 'total_high'
@@ -400,12 +415,12 @@ tenantOrdersRouter.get(
     const ratings = new Map(reviews.map((review) => [review.orderId, review.rating]));
     if (rows.length > 0) {
       const items = await db
-        .select({ orderId: orderItems.orderId, name: orderItems.nameSnapshot, quantity: orderItems.quantity })
+        .select({ orderId: orderItems.orderId, name: orderItems.nameSnapshot, selections: orderItems.selections, quantity: orderItems.quantity })
         .from(orderItems)
         .where(inArray(orderItems.orderId, rows.map((row) => row.id)));
       for (const item of items) {
         const list = itemsByOrder.get(item.orderId) ?? [];
-        list.push({ name: item.name, quantity: item.quantity });
+        list.push({ name: menuItemLabel(item.name, item.selections), quantity: item.quantity });
         itemsByOrder.set(item.orderId, list);
       }
     }
@@ -418,6 +433,9 @@ tenantOrdersRouter.get(
         trackingCode: row.trackingCode,
         status: row.status,
         placedAt: row.placedAt,
+        scheduledFor: row.scheduledFor,
+        prepareAt: row.prepareAt,
+        scheduleTimezone: row.scheduleTimezone,
         customerName: row.customerName,
         customerPhone: row.customerPhone,
         deliveryAddress: row.deliveryAddress,
@@ -462,15 +480,20 @@ tenantOrdersRouter.get(
       .where(and(eq(orders.restaurantId, restaurantId), gte(orders.placedAt, startOfDay)));
 
     // Live queues span days — a pending order from last night still needs action.
+    const now = new Date();
+    const due = or(isNull(orders.prepareAt), lte(orders.prepareAt, now))!;
+    const [upcoming] = await db.select({ count: sql<number>`count(*)` }).from(orders)
+      .where(and(eq(orders.restaurantId, restaurantId), gt(orders.prepareAt, now), inArray(orders.status, [OrderStatus.PENDING, OrderStatus.ACCEPTED])));
     const [live] = await db
       .select({
         openOrders: sql<number>`sum(case when ${orders.status} in (${OrderStatus.PENDING}, ${OrderStatus.ACCEPTED}, ${OrderStatus.PREPARING}, ${OrderStatus.READY}, ${OrderStatus.OUT_FOR_DELIVERY}) then 1 else 0 end)`,
         pendingNow: sql<number>`sum(case when ${orders.status} = ${OrderStatus.PENDING} then 1 else 0 end)`,
       })
       .from(orders)
-      .where(eq(orders.restaurantId, restaurantId));
+      .where(and(eq(orders.restaurantId, restaurantId), due));
 
     ok(res, {
+      upcoming: Number(upcoming?.count ?? 0),
       today: {
         orders: Number(row?.todayCount ?? 0),
         revenueMinor: fromDecimalString(row?.todayRevenue ?? '0'),

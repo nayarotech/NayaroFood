@@ -1,5 +1,9 @@
+import { availableSlots, scheduleFromSettings } from '../restaurant/schedule.service.js';
 import { and, asc, desc, eq, exists, isNull, like, or, sql } from 'drizzle-orm';
 import {
+  type MenuOptionGroup,
+  isWithinHours,
+  type RestaurantSchedule,
   RestaurantStatus,
   fromDecimalString,
   haversineKm,
@@ -36,6 +40,7 @@ export interface PublicRestaurantSummary {
   coverUrl: string | null;
   address: string;
   isOpen: boolean;
+  canSchedule: boolean;
   acceptsOrders: boolean;
   categories: string[];
   /** Platform relevance score, 0-100. Surfaced so ranking is not a black box. */
@@ -164,6 +169,12 @@ export async function listPublicRestaurants(params: {
       longitude: restaurants.longitude,
       isOpen: restaurants.isOpen,
       acceptsOrders: restaurantSettings.acceptsOrders,
+      timezone: restaurantSettings.timezone,
+      weeklyHours: restaurantSettings.weeklyHours,
+      holidayClosures: restaurantSettings.holidayClosures,
+      schedulingEnabled: restaurantSettings.schedulingEnabled,
+      defaultPrepTimeMinutes: restaurantSettings.defaultPrepTimeMinutes,
+      maxOrdersPerSlot: restaurantSettings.maxOrdersPerSlot,
       rankScore: restaurantRankings.score,
       pinnedPosition: restaurantRankings.pinnedPosition,
     })
@@ -219,7 +230,8 @@ export async function listPublicRestaurants(params: {
         logoUrl: row.logoUrl,
         coverUrl: row.coverUrl,
         address: row.address,
-        isOpen: row.isOpen === 1,
+        isOpen: row.isOpen === 1 && isWithinHours({ timezone: row.timezone ?? 'Asia/Kathmandu', weeklyHours: row.weeklyHours, holidayClosures: row.holidayClosures ?? [] }, new Date()),
+        canSchedule: row.isOpen === 1 && row.acceptsOrders === 1 && row.schedulingEnabled === 1,
         acceptsOrders: (row.acceptsOrders ?? 0) === 1,
         categories: categoryRows.map((c) => c.name),
         rankScore: row.rankScore ?? 0,
@@ -242,6 +254,7 @@ export async function listPublicRestaurants(params: {
 }
 
 export interface PublicMenuItem {
+  optionGroups: MenuOptionGroup[];
   id: number;
   name: string;
   description: string | null;
@@ -259,6 +272,8 @@ export interface PublicRestaurantDetail extends PublicRestaurantSummary {
   phone: string;
   minOrderMinor: number;
   currency: string;
+  schedule: RestaurantSchedule;
+  slots: string[];
   zones: DeliveryZoneRule[];
   menu: { id: number; name: string; items: PublicMenuItem[] }[];
 }
@@ -283,6 +298,12 @@ export async function getPublicRestaurant(
       longitude: restaurants.longitude,
       isOpen: restaurants.isOpen,
       acceptsOrders: restaurantSettings.acceptsOrders,
+      timezone: restaurantSettings.timezone,
+      weeklyHours: restaurantSettings.weeklyHours,
+      holidayClosures: restaurantSettings.holidayClosures,
+      schedulingEnabled: restaurantSettings.schedulingEnabled,
+      defaultPrepTimeMinutes: restaurantSettings.defaultPrepTimeMinutes,
+      maxOrdersPerSlot: restaurantSettings.maxOrdersPerSlot,
       minOrderAmount: restaurantSettings.minOrderAmount,
       currency: restaurantSettings.currency,
     })
@@ -293,6 +314,8 @@ export async function getPublicRestaurant(
 
   if (!row) throw notFound('That restaurant is not available.', 'RESTAURANT_NOT_FOUND');
 
+  const schedule = scheduleFromSettings({ timezone: row.timezone ?? 'Asia/Kathmandu', weeklyHours: row.weeklyHours, holidayClosures: row.holidayClosures, schedulingEnabled: row.schedulingEnabled ?? 0, defaultPrepTimeMinutes: row.defaultPrepTimeMinutes ?? 30, maxOrdersPerSlot: row.maxOrdersPerSlot ?? 10 });
+  const slots = row.isOpen === 1 && row.acceptsOrders === 1 ? await availableSlots(row.id, schedule) : [];
   const zones = await loadZones(row.id);
 
   const menuRows = await db
@@ -302,6 +325,7 @@ export async function getPublicRestaurant(
       categorySort: categories.sortOrder,
       itemId: foodItems.id,
       itemName: foodItems.name,
+      optionGroups: foodItems.optionGroups,
       itemDescription: foodItems.description,
       itemImage: foodItems.imageUrl,
       price: foodItems.price,
@@ -339,6 +363,7 @@ export async function getPublicRestaurant(
     const discountPriceMinor = item.discountPrice ? fromDecimalString(item.discountPrice) : null;
     group.items.push({
       id: item.itemId,
+      optionGroups: item.optionGroups ?? [],
       name: item.itemName,
       description: item.itemDescription,
       imageUrl: item.itemImage,
@@ -368,7 +393,8 @@ export async function getPublicRestaurant(
     phone: row.phone,
     latitude: row.latitude,
     longitude: row.longitude,
-    isOpen: row.isOpen === 1,
+    isOpen: row.isOpen === 1 && isWithinHours({ timezone: row.timezone ?? 'Asia/Kathmandu', weeklyHours: row.weeklyHours, holidayClosures: row.holidayClosures ?? [] }, new Date()),
+    canSchedule: slots.length > 0,
     acceptsOrders: (row.acceptsOrders ?? 0) === 1,
     minOrderMinor: fromDecimalString(row.minOrderAmount),
     currency: row.currency ?? 'NPR',
@@ -385,6 +411,8 @@ export async function getPublicRestaurant(
             maxSupportedKm: Math.max(...zones.map((z) => z.maxDistanceKm)),
           }
         : null,
+    schedule,
+    slots,
     zones,
     menu: [...menuByCategory.values()],
   };

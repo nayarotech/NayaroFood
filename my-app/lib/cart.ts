@@ -1,9 +1,10 @@
 'use client';
 
+import { cartLineKey } from '@/lib/menu-options';
 import { useSyncExternalStore } from 'react';
 
 /**
- * The customer's cart, kept in this browser only — ordering needs no account.
+ * The customer's cart, kept in this browser only — checkout uses a signed-in customer account.
  *
  * One cart per restaurant, because an order goes to exactly one kitchen.
  * Prices here are for display; the API re-reads every price from the menu
@@ -15,6 +16,8 @@ export interface CartLine {
   name: string;
   priceMinor: number;
   quantity: number;
+  optionIds?: string[];
+  optionLabels?: string[];
 }
 
 const MAX_QTY = 99;
@@ -38,7 +41,7 @@ function read(restaurantId: number): CartLine[] {
   try {
     const parsed = raw ? (JSON.parse(raw) as CartLine[]) : [];
     lines = Array.isArray(parsed)
-      ? parsed.filter((l) => Number.isInteger(l.id) && l.quantity > 0).map((l) => ({ ...l, quantity: Math.min(MAX_QTY, l.quantity) }))
+      ? parsed.filter((l) => Number.isInteger(l.id) && Number.isInteger(l.quantity) && l.quantity > 0).map((l) => ({ ...l, quantity: Math.min(MAX_QTY, Math.floor(l.quantity)), optionIds: Array.isArray(l.optionIds) ? l.optionIds.filter((id): id is string => typeof id === 'string').slice(0, 200) : [], optionLabels: Array.isArray(l.optionLabels) ? l.optionLabels.filter((label): label is string => typeof label === 'string').slice(0, 200) : [] }))
       : EMPTY;
   } catch {
     lines = EMPTY;
@@ -71,9 +74,10 @@ export function useCart(restaurantId: number) {
 
   const setQuantity = (item: Omit<CartLine, 'quantity'>, quantity: number) => {
     const current = read(restaurantId);
-    const next = current.filter((l) => l.id !== item.id);
+    const identity = cartLineKey(item.id, item.optionIds);
+    const next = current.filter((l) => cartLineKey(l.id, l.optionIds) !== identity);
     if (quantity > 0) {
-      const existingIndex = current.findIndex((l) => l.id === item.id);
+      const existingIndex = current.findIndex((l) => cartLineKey(l.id, l.optionIds) === identity);
       const line = { ...item, quantity: Math.min(MAX_QTY, quantity) };
       if (existingIndex >= 0) next.splice(existingIndex, 0, line);
       else next.push(line);
@@ -85,7 +89,7 @@ export function useCart(restaurantId: number) {
     lines,
     count: lines.reduce((n, l) => n + l.quantity, 0),
     subtotalMinor: lines.reduce((n, l) => n + l.priceMinor * l.quantity, 0),
-    quantityOf: (id: number) => lines.find((l) => l.id === id)?.quantity ?? 0,
+    quantityOf: (id: number, optionIds: string[] = []) => lines.find((l) => cartLineKey(l.id, l.optionIds) === cartLineKey(id, optionIds))?.quantity ?? 0,
     setQuantity,
     clear: () => write(restaurantId, []),
   };

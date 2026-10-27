@@ -53,7 +53,7 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<'
 
   // The live menu, so the form can drop anything that sold out since it was added.
   const menu = restaurant.menu.flatMap((category) =>
-    category.items.map((item) => ({ id: item.id, name: item.name, priceMinor: item.effectivePriceMinor })),
+    category.items.map((item) => ({ id: item.id, name: item.name, priceMinor: item.effectivePriceMinor, optionGroups: item.optionGroups })),
   );
 
   return (
@@ -77,6 +77,8 @@ export default async function CheckoutPage({ params, searchParams }: PageProps<'
           slug: restaurant.slug,
           minOrderMinor: restaurant.minOrderMinor,
           closed: !restaurant.isOpen || !restaurant.acceptsOrders,
+          slots: restaurant.slots,
+          timezone: restaurant.schedule.timezone,
         }}
         menu={menu}
         delivery={restaurant.delivery}

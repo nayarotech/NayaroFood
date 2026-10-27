@@ -33,6 +33,8 @@ export interface OrderNotification {
   customerPhone: string;
   address: string;
   distanceKm: number;
+  scheduledFor?: Date | null;
+  scheduleTimezone?: string | null;
   note?: string | null | undefined;
 }
 
@@ -57,6 +59,7 @@ function renderOrderMessage(order: OrderNotification): string {
     `Address: ${order.address}`,
     `Distance: ${order.distanceKm} km`,
   ];
+  if (order.scheduledFor) lines.push('', `Scheduled dispatch: ${new Intl.DateTimeFormat('en-GB', { timeZone: order.scheduleTimezone ?? 'Asia/Kathmandu', dateStyle: 'medium', timeStyle: 'short' }).format(order.scheduledFor)} (${order.scheduleTimezone ?? 'Asia/Kathmandu'})`);
   if (order.note) lines.push('', `Note: ${order.note}`);
   lines.push('', 'Order Status:', 'PENDING');
   return lines.join('\n');

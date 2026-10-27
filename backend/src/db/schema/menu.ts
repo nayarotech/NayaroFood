@@ -1,5 +1,6 @@
+import type { MenuOptionGroup } from '@nayaro/shared';
 import { relations } from 'drizzle-orm';
-import { index, int, mysqlTable, text, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
+import { index, int, json, mysqlTable, text, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
 import { deletedAt, fk, money, pk, timestamps } from './_shared.js';
 import { restaurants } from './restaurants.js';
 
@@ -45,6 +46,7 @@ export const foodItems = mysqlTable(
     slug: varchar('slug', { length: 170 }).notNull(),
     description: text('description'),
     imageUrl: varchar('image_url', { length: 500 }),
+    optionGroups: json('option_groups').$type<MenuOptionGroup[]>(),
     price: money('price').notNull(),
     /** Promotional price. When set and lower than `price`, this is what is charged. */
     discountPrice: money('discount_price'),

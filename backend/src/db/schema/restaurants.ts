@@ -1,4 +1,5 @@
 import { relations } from 'drizzle-orm';
+import type { OpeningPeriod } from '@nayaro/shared';
 import {
   index,
   int,
@@ -110,6 +111,10 @@ export const restaurantSettings = mysqlTable(
       .references(() => restaurants.id, { onDelete: 'cascade' }),
     currency: varchar('currency', { length: 3 }).notNull().default('NPR'),
     timezone: varchar('timezone', { length: 64 }).notNull().default('Asia/Kathmandu'),
+    weeklyHours: json('weekly_hours').$type<OpeningPeriod[] | null>(),
+    holidayClosures: json('holiday_closures').$type<string[]>(),
+    schedulingEnabled: int('scheduling_enabled').notNull().default(0),
+    maxOrdersPerSlot: int('max_orders_per_slot').notNull().default(10),
     minOrderAmount: money('min_order_amount').notNull().default('0.00'),
     defaultPrepTimeMinutes: int('default_prep_time_minutes').notNull().default(30),
     acceptsOrders: int('accepts_orders').notNull().default(1),

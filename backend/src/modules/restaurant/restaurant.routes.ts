@@ -97,6 +97,11 @@ restaurantRouter.get(
         whatsappNumber: restaurantSettings.whatsappNumber,
         whatsappStatus: restaurantSettings.whatsappStatus,
         acceptsOrders: restaurantSettings.acceptsOrders,
+        timezone: restaurantSettings.timezone,
+        weeklyHours: restaurantSettings.weeklyHours,
+        holidayClosures: restaurantSettings.holidayClosures,
+        schedulingEnabled: restaurantSettings.schedulingEnabled,
+        maxOrdersPerSlot: restaurantSettings.maxOrdersPerSlot,
         currency: restaurantSettings.currency,
         minOrderAmount: restaurantSettings.minOrderAmount,
         defaultPrepTimeMinutes: restaurantSettings.defaultPrepTimeMinutes,
@@ -279,6 +284,10 @@ restaurantRouter.patch(
     await db
       .update(restaurantSettings)
       .set({
+        ...(input.weeklyHours !== undefined ? { weeklyHours: input.weeklyHours } : {}),
+        ...(input.holidayClosures !== undefined ? { holidayClosures: input.holidayClosures } : {}),
+        ...(input.schedulingEnabled !== undefined ? { schedulingEnabled: input.schedulingEnabled ? 1 : 0 } : {}),
+        ...(input.maxOrdersPerSlot !== undefined ? { maxOrdersPerSlot: input.maxOrdersPerSlot } : {}),
         ...(input.currency !== undefined ? { currency: input.currency } : {}),
         ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
         ...(input.minOrderAmount !== undefined

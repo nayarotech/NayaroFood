@@ -1,3 +1,4 @@
+import { menuItemLabel } from '@nayaro/shared';
 import { Router } from 'express';
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -104,6 +105,8 @@ customerRouter.get(
           orderNumber: orders.orderNumber,
           status: orders.status,
           placedAt: orders.placedAt,
+          scheduledFor: orders.scheduledFor,
+          scheduleTimezone: orders.scheduleTimezone,
           total: orders.total,
           restaurantName: restaurants.name,
           restaurantSlug: restaurants.slug,
@@ -127,11 +130,11 @@ customerRouter.get(
       for (const review of ownReviews) reviews.set(review.orderId, { rating: review.rating, comment: review.comment });
 
       const items = await db
-        .select({ orderId: orderItems.orderId, name: orderItems.nameSnapshot, quantity: orderItems.quantity })
+        .select({ orderId: orderItems.orderId, name: orderItems.nameSnapshot, selections: orderItems.selections, quantity: orderItems.quantity })
         .from(orderItems)
         .where(inArray(orderItems.orderId, rows.map((r) => r.id)));
       for (const item of items) {
-        const text = `${item.quantity}× ${item.name}`;
+        const text = `${item.quantity}× ${menuItemLabel(item.name, item.selections)}`;
         summaries.set(item.orderId, summaries.has(item.orderId) ? `${summaries.get(item.orderId)}, ${text}` : text);
       }
     }

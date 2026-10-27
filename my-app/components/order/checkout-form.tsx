@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import type { MenuOptionGroup } from '@nayaro/shared';
+import { cartLineKey, resolveMenuOptions } from '@/lib/menu-options';
 import type { Route } from 'next';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -30,8 +32,8 @@ export function CheckoutForm({
   location,
   customer,
 }: {
-  restaurant: { id: number; name: string; slug: string; minOrderMinor: number; closed: boolean };
-  menu: { id: number; name: string; priceMinor: number }[];
+  restaurant: { id: number; name: string; slug: string; minOrderMinor: number; closed: boolean; slots: string[]; timezone: string };
+  menu: { id: number; name: string; priceMinor: number; optionGroups: MenuOptionGroup[] }[];
   delivery: DeliveryQuote | null;
   location: { lat: number; lng: number } | null;
   /** The signed-in account; the API uses it, not anything typed here. */
@@ -44,6 +46,9 @@ export function CheckoutForm({
 
   const [address, setAddress] = useState('');
   const [landmark, setLandmark] = useState('');
+  const [scheduledFor, setScheduledFor] = useState('');
+  const timingValid = scheduledFor ? restaurant.slots.includes(scheduledFor) : !restaurant.closed;
+  const slotFormat = new Intl.DateTimeFormat('en-GB', { timeZone: restaurant.timezone, weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
   const [note, setNote] = useState('');
   const [remember, setRemember] = useState(true);
   const [fields, setFields] = useState<Record<string, string>>({});
@@ -70,10 +75,17 @@ export function CheckoutForm({
     const byId = new Map(menu.map((m) => [m.id, m]));
     const kept = cart.lines
       .filter((l) => byId.has(l.id))
-      .map((l) => ({ ...l, priceMinor: byId.get(l.id)!.priceMinor, name: byId.get(l.id)!.name }));
+      .map((line) => {
+        const item = byId.get(line.id)!;
+        const resolved = resolveMenuOptions(item.optionGroups, line.optionIds ?? []);
+        return { ...line, name: item.name, priceMinor: resolved.ok ? item.priceMinor + resolved.extraMinor : line.priceMinor,
+          optionLabels: resolved.ok ? resolved.selections.map((s) => `${s.groupName}: ${s.optionName}`) : line.optionLabels,
+          optionError: resolved.ok ? null : resolved.message };
+      });
     return { lines: kept, removed: cart.lines.filter((l) => !byId.has(l.id)) };
   }, [cart.lines, menu]);
 
+  const invalidOptions = lines.some((line) => line.optionError);
   const subtotal = lines.reduce((n, l) => n + l.priceMinor * l.quantity, 0);
   const fee = delivery?.deliverable ? delivery.feeMinor : null;
   const total = subtotal + (fee ?? 0);
@@ -132,6 +144,8 @@ export function CheckoutForm({
   async function placeOrder(event: React.FormEvent) {
     event.preventDefault();
     const errors: Record<string, string> = {};
+    if (invalidOptions) errors.options = 'Update the highlighted selections before placing your order.';
+    if (!timingValid) errors.scheduledFor = 'Choose an available order time.';
     if (address.trim().length < 5) errors.address = 'Enter your delivery address.';
     if (!location) errors.location = 'Set your delivery location so we can work out the delivery fee.';
     if (Object.keys(errors).length > 0) {
@@ -146,7 +160,7 @@ export function CheckoutForm({
     try {
       const order = await apiPost<PlacedOrder>('/public/orders', {
         restaurantId: restaurant.id,
-        items: lines.map((l) => ({ foodItemId: l.id, quantity: l.quantity })),
+        items: lines.map((l) => ({ foodItemId: l.id, quantity: l.quantity, optionIds: l.optionIds ?? [] })),
         delivery: {
           address: address.trim(),
           latitude: location!.lat,
@@ -154,6 +168,7 @@ export function CheckoutForm({
           ...(landmark.trim() ? { landmark: landmark.trim() } : {}),
         },
         paymentMethod: 'COD',
+        ...(scheduledFor ? { scheduledFor } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
         idempotencyKey,
       });
@@ -179,6 +194,7 @@ export function CheckoutForm({
         }
         setFields(mapped);
         setError(caught.message);
+        if (['SLOT_FULL', 'SCHEDULE_UNAVAILABLE', 'OUTSIDE_OPENING_HOURS'].includes(caught.code)) router.refresh();
       } else {
         setError('Something went wrong. Your order was not placed — please try again.');
       }
@@ -196,11 +212,23 @@ export function CheckoutForm({
     );
   }
 
-  const canPlace = !restaurant.closed && !belowMinimum && delivery?.deliverable === true && lines.length > 0;
+  const canPlace = !invalidOptions && timingValid && !belowMinimum && delivery?.deliverable === true && lines.length > 0;
 
   return (
     <form onSubmit={placeOrder} noValidate className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
       <div className="min-w-0 space-y-5">
+        <section className="rounded-ny-card border border-line bg-surface p-5">
+          <label htmlFor="checkout-scheduledFor" className="block font-display text-base font-semibold">When should we prepare your order?</label>
+          <select id="checkout-scheduledFor" value={scheduledFor} onChange={(e) => setScheduledFor(e.target.value)} className="mt-3 w-full rounded-ny border border-line bg-surface px-3 py-2 text-sm">
+            <option value="" disabled={restaurant.closed}>{restaurant.closed ? 'Closed now — choose a scheduled time' : 'As soon as possible'}</option>
+            {scheduledFor && !restaurant.slots.includes(scheduledFor) && <option value={scheduledFor} disabled>Selected slot is no longer available</option>}
+            {restaurant.slots.map((slot) => <option key={slot} value={slot}>{slotFormat.format(new Date(slot))}</option>)}
+          </select>
+          <p className="mt-2 text-xs text-ink-muted">Scheduled times are when food should be ready for dispatch, in {restaurant.timezone}. Delivery follows.</p>
+          <button type="button" disabled={pending || placing} onClick={() => startTransition(() => router.refresh())} className="mt-2 text-xs text-accent-label disabled:opacity-50">{pending ? 'Refreshing…' : 'Refresh available times'}</button>
+          {fields.scheduledFor && <p role="alert" className="mt-2 text-sm text-danger">{fields.scheduledFor}</p>}
+          {restaurant.closed && !restaurant.slots.length && <p className="mt-2 text-sm text-ink-muted">No scheduled slots are available. Please check back later.</p>}
+        </section>
         <Section step={1} title="Contact">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <p>
@@ -296,13 +324,16 @@ export function CheckoutForm({
           )}
           <ul className="mt-3 space-y-2 text-sm">
             {lines.map((line) => (
-              <li key={line.id} className="flex items-center gap-2">
+              <li key={cartLineKey(line.id, line.optionIds)} className="flex items-center gap-2">
                 <div className="flex items-center rounded-ny-pill border border-line text-xs">
                   <button type="button" aria-label={`One less ${line.name}`} onClick={() => cart.setQuantity(line, line.quantity - 1)} className="px-2 py-0.5">−</button>
                   <span className="min-w-4 text-center font-semibold tabular-nums">{line.quantity}</span>
                   <button type="button" aria-label={`One more ${line.name}`} onClick={() => cart.setQuantity(line, line.quantity + 1)} className="px-2 py-0.5">+</button>
                 </div>
-                <span className="min-w-0 flex-1 truncate">{line.name}</span>
+                <div className="min-w-0 flex-1"><span>{line.name}</span>
+                  {line.optionLabels?.length ? <p className="text-xs text-ink-muted">{line.optionLabels.join(', ')}</p> : null}
+                  {line.optionError && <p role="alert" className="text-xs text-danger">{line.optionError} <Link href={`/r/${restaurant.slug}` as Route} className="underline">Choose again from the menu</Link> or remove this line.</p>}
+                </div>
                 <span className="tabular-nums">{formatMoney(line.priceMinor * line.quantity)}</span>
               </li>
             ))}
@@ -322,14 +353,14 @@ export function CheckoutForm({
               Minimum order is {formatMoney(restaurant.minOrderMinor)} — add {formatMoney(restaurant.minOrderMinor - subtotal)} more.
             </p>
           )}
-          {restaurant.closed && (
-            <p className="mt-3 rounded-ny bg-surface-inset px-2.5 py-1.5 text-xs text-ink-muted">{restaurant.name} isn&rsquo;t taking orders right now.</p>
+          {!timingValid && (
+            <p className="mt-3 rounded-ny bg-surface-inset px-2.5 py-1.5 text-xs text-ink-muted">Choose an available order time above.</p>
           )}
           {error && <p role="alert" className="mt-3 rounded-ny bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
           <button
             type="submit"
-            disabled={placing || pending || restaurant.closed || belowMinimum || lines.length === 0 || (location !== null && !canPlace)}
+            disabled={placing || pending || invalidOptions || !timingValid || belowMinimum || lines.length === 0 || (location !== null && !canPlace)}
             className="mt-4 w-full rounded-ny bg-accent px-4 py-3 text-base font-semibold text-on-accent shadow-[var(--ny-shadow-accent)] transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {placing ? 'Placing your order…' : `Place order · ${formatMoney(total)}`}

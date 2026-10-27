@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { clockMinutes } from '../schedule.js';
 import { RestaurantStatus, enumValues } from '../enums.js';
 import {
   emailSchema,
@@ -30,9 +31,32 @@ export const updateRestaurantLocationSchema = z.object({
 });
 export type UpdateRestaurantLocationInput = z.infer<typeof updateRestaurantLocationSchema>;
 
+export const openingPeriodSchema = z.object({
+  day: z.number().int().min(0).max(6),
+  opens: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/),
+  closes: z.string().regex(/^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/),
+}).refine((p) => clockMinutes(p.opens) < clockMinutes(p.closes), { message: 'Closing time must follow opening time. Split overnight hours across two days.' });
+
+export const weeklyHoursSchema = z.array(openingPeriodSchema).max(28).superRefine((periods, ctx) => {
+  for (let i = 0; i < periods.length; i++) {
+    for (let j = i + 1; j < periods.length; j++) {
+      const a = periods[i]!; const b = periods[j]!;
+      if (a.day === b.day && clockMinutes(a.opens) < clockMinutes(b.closes) && clockMinutes(b.opens) < clockMinutes(a.closes)) {
+        ctx.addIssue({ code: 'custom', message: 'Opening periods cannot overlap.', path: [j] });
+      }
+    }
+  }
+});
+
 export const updateRestaurantSettingsSchema = z.object({
   currency: z.string().trim().length(3).optional(),
-  timezone: z.string().trim().max(64).optional(),
+  timezone: z.string().trim().min(1).max(64).refine((value) => {
+    try { new Intl.DateTimeFormat('en', { timeZone: value }); return true; } catch { return false; }
+  }, 'Enter a valid IANA timezone, such as Asia/Kathmandu.').optional(),
+  weeklyHours: weeklyHoursSchema.nullable().optional(),
+  holidayClosures: z.array(z.iso.date()).max(366).optional(),
+  schedulingEnabled: z.boolean().optional(),
+  maxOrdersPerSlot: z.number().int().min(1).max(100).optional(),
   minOrderAmount: z.coerce.number().min(0).max(999_999).optional(),
   defaultPrepTimeMinutes: z.coerce.number().int().min(0).max(360).optional(),
   /** Master switch: when false the restaurant is listed but cannot take orders. */

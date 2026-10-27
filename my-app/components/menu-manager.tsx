@@ -1,5 +1,7 @@
 'use client';
 
+import type { MenuOptionGroup } from '@nayaro/shared';
+import { MenuOptionsEditor } from '@/components/menu-options-editor';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, apiDelete, apiPatch, apiPost } from '@/lib/api';
@@ -17,6 +19,7 @@ export interface MenuCategory {
 }
 
 export interface MenuItem {
+  optionGroups: MenuOptionGroup[];
   id: number;
   categoryId: number;
   categoryName: string;
@@ -288,6 +291,7 @@ function ItemDialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const item = editing?.mode === 'edit' ? editing.item : null;
+  const [optionGroups, setOptionGroups] = useState<MenuOptionGroup[]>([]);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -299,6 +303,7 @@ function ItemDialog({
     if (!dialog) return;
     if (open && !dialog.open) {
       setImageUrl(item?.imageUrl ?? null);
+      setOptionGroups(item?.optionGroups ?? []);
       setError(null);
       setFields({});
       dialog.showModal();
@@ -325,6 +330,7 @@ function ItemDialog({
     }
 
     const payload = {
+      optionGroups,
       name: text('name'),
       description: text('description') || (editing.mode === 'edit' ? null : undefined),
       categoryId: Number(text('categoryId')),
@@ -345,7 +351,7 @@ function ItemDialog({
     } catch (caught) {
       if (caught instanceof ApiError) {
         setFields(caught.fields ?? {});
-        setError(caught.message);
+        setError(`${caught.message} ${Object.entries(caught.fields ?? {}).filter(([key]) => key.startsWith('optionGroups')).map(([, message]) => message).join(' ')}`);
       } else {
         setError('Could not save the dish.');
       }
@@ -425,6 +431,8 @@ function ItemDialog({
               </label>
             </div>
           </div>
+
+          <div className="mt-4"><MenuOptionsEditor groups={optionGroups} onChange={setOptionGroups} disabled={busy} /></div>
 
           {error && (
             <p role="alert" className="mt-4 rounded-ny bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>

@@ -13,9 +13,9 @@ const nextConfig: NextConfig = {
   },
 
   /*
-   * @nayaro/shared is used for types only (via the tsconfig `paths` entry), so
-   * the web build never needs packages/shared/dist — which is git-ignored and
-   * not built on Vercel.
+   * Shared types use the tsconfig paths entry. The option-pricing engine is
+   * imported directly from source via lib/menu-options, so web builds do not
+   * require packages/shared/dist.
    */
 
   typedRoutes: true,

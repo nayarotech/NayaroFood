@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { minimumOptionsExtra } from '@/lib/menu-options';
 import { notFound } from 'next/navigation';
 import { ApiError, apiGet } from '@/lib/api';
 import { UtensilsCrossed } from 'lucide-react';
@@ -47,7 +48,8 @@ export default async function RestaurantPage({ params, searchParams }: PageProps
   }
 
   const { delivery } = restaurant;
-  const closed = !restaurant.isOpen || !restaurant.acceptsOrders;
+  const closed = (!restaurant.isOpen || !restaurant.acceptsOrders) && !restaurant.canSchedule;
+  const closedNow = !restaurant.isOpen || !restaurant.acceptsOrders;
   const itemCount = restaurant.menu.reduce((total, c) => total + c.items.length, 0);
 
   return (
@@ -103,12 +105,14 @@ export default async function RestaurantPage({ params, searchParams }: PageProps
 
           <span
             className={`rounded-ny-pill px-3 py-1 text-xs font-semibold tracking-wide ${
-              closed ? 'bg-surface-muted text-ink-muted' : 'bg-success-soft text-success'
+              closedNow ? 'bg-surface-muted text-ink-muted' : 'bg-success-soft text-success'
             }`}
           >
-            {closed ? 'Closed' : 'Open now'}
+            {closedNow ? (restaurant.canSchedule ? 'Closed now · Schedule ahead' : 'Closed') : 'Open now'}
           </span>
         </header>
+
+        <p className="mt-3 text-sm text-ink-muted">Hours in {restaurant.schedule.timezone}. {restaurant.schedule.weeklyHours === null ? 'Hours are managed by the restaurant.' : restaurant.schedule.weeklyHours.length === 0 ? 'Closed all week.' : restaurant.schedule.weeklyHours.map((p) => `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][p.day]} ${p.opens}–${p.closes}`).join(' · ')}</p>
 
         {/* What this costs you, stated once, prominently. */}
         {delivery !== null && (
@@ -250,6 +254,7 @@ function MenuItemCard({
   const discounted =
     item.discountPriceMinor !== null && item.discountPriceMinor < item.priceMinor;
   const prep = formatPrepTime(item.prepTimeMinutes);
+  const minimumExtra = minimumOptionsExtra(item.optionGroups);
 
   return (
     <li className="flex gap-3 overflow-hidden rounded-ny-card border border-line bg-surface p-3 transition-colors hover:border-line-strong">
@@ -282,19 +287,19 @@ function MenuItemCard({
 
         <div className="mt-auto flex items-baseline gap-2 pt-1.5">
           <span className="font-display font-semibold tabular-nums">
-            {formatMoney(item.effectivePriceMinor)}
+            {item.optionGroups.length ? 'From ' : ''}{formatMoney(item.effectivePriceMinor + (minimumExtra ?? 0))}
           </span>
           {discounted && (
             <span className="text-xs text-ink-label line-through tabular-nums">
-              {formatMoney(item.priceMinor)}
+              {formatMoney(item.priceMinor + (minimumExtra ?? 0))}
             </span>
           )}
           {prep && <span className="text-xs text-ink-label">· {prep}</span>}
           <span className="ml-auto">
             <AddToCart
               restaurantId={restaurantId}
-              item={{ id: item.id, name: item.name, priceMinor: item.effectivePriceMinor }}
-              disabled={closed}
+              item={{ id: item.id, name: item.name, priceMinor: item.effectivePriceMinor, optionGroups: item.optionGroups }}
+              disabled={closed || minimumExtra === null}
             />
           </span>
         </div>

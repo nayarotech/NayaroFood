@@ -14,6 +14,8 @@ export interface RiderOrder {
   orderNumber: string;
   status: OrderStatus;
   placedAt: string;
+  scheduledFor: string | null;
+  scheduleTimezone: string | null;
   assignedAt: string | null;
   pickedUpAt: string | null;
   deliveredAt: string | null;
@@ -83,6 +85,7 @@ export function RiderOrderCard({ order }: { order: RiderOrder }) {
         </span>
       </header>
 
+      {order.scheduledFor && <p className="mt-2 text-xs text-accent-label">Scheduled dispatch: {new Intl.DateTimeFormat('en-GB', { timeZone: order.scheduleTimezone ?? 'Asia/Kathmandu', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(order.scheduledFor))} ({order.scheduleTimezone})</p>}
       <div className="mt-3">
         <p className="font-medium">{order.customerName}</p>
         <p className="mt-0.5 flex items-start gap-1.5 text-sm text-ink-muted">

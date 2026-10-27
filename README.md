@@ -48,15 +48,15 @@ on a missing or too-short secret rather than failing later in a request.
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| `pnpm dev` | Runs the web app and the API together |
-| `pnpm dev:web` / `pnpm dev:api` | One side only |
-| `pnpm test` | Every package's test suite |
-| `pnpm typecheck` | Type-checks every package |
-| `pnpm db:generate` | Generates a migration from the Drizzle schema |
-| `pnpm db:migrate` | Applies pending migrations |
-| `pnpm db:seed` | Seeds the Super Admin and demo data |
+| Command                         | What it does                                  |
+| ------------------------------- | --------------------------------------------- |
+| `pnpm dev`                      | Runs the web app and the API together         |
+| `pnpm dev:web` / `pnpm dev:api` | One side only                                 |
+| `pnpm test`                     | Every package's test suite                    |
+| `pnpm typecheck`                | Type-checks every package                     |
+| `pnpm db:generate`              | Generates a migration from the Drizzle schema |
+| `pnpm db:migrate`               | Applies pending migrations                    |
+| `pnpm db:seed`                  | Seeds the Super Admin and demo data           |
 
 After changing anything in `packages/shared`, rebuild it (`pnpm --filter @nayaro/shared build`)
 or run `pnpm --filter @nayaro/shared dev` to watch.
@@ -80,13 +80,13 @@ if one ever slips through, the lowest fee wins.
 
 **Orders only go to a VERIFIED WhatsApp number.** A failed send is logged in
 `notification_logs` and never invalidates the order. WhatsApp is currently off
-(`WHATSAPP_ENABLED=false`) and listed as *Upcoming*; while it is off, nobody loses
+(`WHATSAPP_ENABLED=false`) and listed as _Upcoming_; while it is off, nobody loses
 ranking points for an unverified number. New orders reach restaurants through the
 live dashboard (Server-Sent Events, with sound) and browser Web Push.
 
-**Restaurant lifecycle.** `PENDING` → *Verify* → `ACTIVE`. A Super Admin can
-*Deactivate* (`INACTIVE`: hidden and no orders, but the owner can still sign in)
-or *Block* (`SUSPENDED`: hidden, no orders, owner locked out). Both need a reason,
+**Restaurant lifecycle.** `PENDING` → _Verify_ → `ACTIVE`. A Super Admin can
+_Deactivate_ (`INACTIVE`: hidden and no orders, but the owner can still sign in)
+or _Block_ (`SUSPENDED`: hidden, no orders, owner locked out). Both need a reason,
 which the owner sees. Every admin action is written to `audit_logs` and shown
 under **Admin → Activity log**.
 
@@ -116,13 +116,13 @@ footer settings live in `platform_settings`; pages live in `site_pages` and are
 served at `/<slug>`. Contact-form messages go to `contact_messages` and show up in
 the admin inbox. Default pages are created on first boot.
 
-| Env var | Default | Purpose |
-|---|---|---|
-| `WHATSAPP_ENABLED` | `false` | Turns on WhatsApp verification and order messages |
-| `PLATFORM_UTC_OFFSET` | `+05:45` | Defines a "day" in admin reports |
-| `EMAIL_PROVIDER` | `log` | `resend` in production; `log` prints emails to the server log |
-| `RESEND_API_KEY` | — | Resend API key (required when `EMAIL_PROVIDER=resend`) |
-| `EMAIL_FROM` | `onboarding@resend.dev` | Sender; must be on a domain verified in Resend |
+| Env var               | Default                 | Purpose                                                       |
+| --------------------- | ----------------------- | ------------------------------------------------------------- |
+| `WHATSAPP_ENABLED`    | `false`                 | Turns on WhatsApp verification and order messages             |
+| `PLATFORM_UTC_OFFSET` | `+05:45`                | Defines a "day" in admin reports                              |
+| `EMAIL_PROVIDER`      | `log`                   | `resend` in production; `log` prints emails to the server log |
+| `RESEND_API_KEY`      | —                       | Resend API key (required when `EMAIL_PROVIDER=resend`)        |
+| `EMAIL_FROM`          | `onboarding@resend.dev` | Sender; must be on a domain verified in Resend                |
 
 **Email codes.** Customers confirm their email with a 6-digit code before their
 account is created, and anyone with an email can reset a forgotten password with
@@ -148,3 +148,58 @@ environment at a dedicated database whose name ends in `_test`, set
 `pnpm --filter @nayaro/api test:integration`. Tests delete their own fixtures.
 Never point these tests at a production database. GitHub Actions provisions a
 fresh MySQL service and runs these checks on pushes and pull requests.
+
+## Restaurant hours and scheduled ordering
+
+Apply migrations with `pnpm db:migrate` before deploying this version. Migration
+`0009` adds hours, scheduling settings, and scheduled-order timestamps. Existing
+restaurants retain manual availability until they configure hours; scheduled
+ordering starts disabled.
+
+In **Dashboard → Settings → Hours and scheduled orders**, choose an IANA timezone,
+weekly periods, holiday dates, and an optional order limit per dispatch slot.
+Days without periods are closed. Use `24:00` for a closing time at midnight;
+split overnight hours across two calendar days. Holiday dates use the restaurant's
+timezone. Manual closure and the accepting-orders switch override hours and stop
+both immediate and scheduled checkout.
+
+Customers can choose a 15-minute dispatch slot up to seven days ahead. A slot
+means food should be ready to leave the kitchen, not arrive at the customer's
+address. The configured preparation time must fit entirely inside opening hours.
+The backend revalidates availability and reserves capacity under the restaurant
+settings lock. Cancelled and rejected orders release their reserved capacity.
+
+**Orders → Upcoming scheduled** shows future preparation work. Orders enter
+**Needs action** when their saved preparation time arrives; the board refreshes
+every 30 seconds. Restaurants can accept ahead of time, but cannot start
+preparation early. Confirmed dispatch times, preparation times, and timezones
+are snapshotted: later settings changes affect new orders, not existing bookings.
+Customers see scheduled dispatch on tracking and account pages; riders and order
+notifications show it too. Customers retain the existing cancellation policy
+(cancellation while pending).
+
+## Menu options and add-ons
+
+Run `pnpm db:migrate` before using this version. Migration `0010` adds optional
+configuration to dishes and selection snapshots to order lines. Existing dishes
+and browser carts continue to work without options.
+
+In **Dashboard → Menu**, edit a dish and use **Options and add-ons**. Create groups
+such as Size, Protein, or Extras. Set minimum/maximum choices to `1 / 1` for a
+required single choice, or `0 / 2` for up to two optional extras. Each option has
+an additional per-item price and an availability switch. Use a zero additional
+price for the default size or an included choice. Dish discounts apply to the
+base price; option charges are then added. Menu “from” prices include the
+cheapest mandatory available selections.
+
+Customers choose options before adding a dish. Different combinations have
+separate quantities in the cart; the same combination merges even if options
+were clicked in a different order. Checkout reprices against the live menu and
+flags selections that were removed or sold out. The backend accepts option IDs,
+rechecks each group's limits against the locked dish, and calculates all prices.
+Order lines retain selected group/option names and per-unit additions, so later
+menu edits do not change past orders. Selections appear on restaurant, rider,
+customer tracking, account-history, and admin order views, and in order alerts.
+
+Limits: ten groups per dish, twenty options per group, and a maximum of fifty
+lines per checkout. Existing scheduled-order rules also apply to customized dishes.

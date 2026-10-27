@@ -1,5 +1,11 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { scheduleFromSettings } from '../restaurant/schedule.service.js';
+import { and, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 import {
+  resolveMenuOptions,
+  optionSummary,
+  type SelectedMenuOption,
+  isWithinHours,
+  isValidScheduledTime,
   Actor,
   OrderStatus,
   RestaurantStatus,
@@ -42,7 +48,10 @@ export interface PlacedOrder {
   deliveryFeeMinor: number;
   totalMinor: number;
   distanceKm: number;
-  items: { name: string; quantity: number; unitPriceMinor: number; lineTotalMinor: number }[];
+  scheduledFor: Date | null;
+  prepareAt: Date | null;
+  scheduleTimezone: string | null;
+  items: { name: string; quantity: number; unitPriceMinor: number; lineTotalMinor: number; selections: SelectedMenuOption[] }[];
 }
 
 /** "NY" + 8 unambiguous characters: ~10¹² combinations, so codes are not guessable. */
@@ -118,6 +127,12 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
     // taking it in a consistent order avoids deadlocks between concurrent orders.
     const [settings] = await tx
       .select({
+        timezone: restaurantSettings.timezone,
+        weeklyHours: restaurantSettings.weeklyHours,
+        holidayClosures: restaurantSettings.holidayClosures,
+        schedulingEnabled: restaurantSettings.schedulingEnabled,
+        maxOrdersPerSlot: restaurantSettings.maxOrdersPerSlot,
+        defaultPrepTimeMinutes: restaurantSettings.defaultPrepTimeMinutes,
         acceptsOrders: restaurantSettings.acceptsOrders,
         minOrderAmount: restaurantSettings.minOrderAmount,
         orderNumberPrefix: restaurantSettings.orderNumberPrefix,
@@ -143,6 +158,23 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
       }
     }
 
+    const now = new Date();
+    const schedule = scheduleFromSettings(settings);
+    const scheduledFor = input.scheduledFor ? new Date(input.scheduledFor) : null;
+    if (scheduledFor) {
+      if (!isValidScheduledTime(schedule, scheduledFor, now)) {
+        throw unprocessable('Choose an available dispatch slot with enough preparation time, within the next seven days.', 'SCHEDULE_UNAVAILABLE');
+      }
+      // The settings lock serializes slot reservations, including simultaneous checkouts.
+      const reserved = await tx.select({ id: orders.id }).from(orders)
+        .where(and(eq(orders.restaurantId, restaurant.id), eq(orders.scheduledFor, scheduledFor), notInArray(orders.status, [OrderStatus.CANCELLED, OrderStatus.REJECTED])))
+        .for('update');
+      if (reserved.length >= schedule.maxOrdersPerSlot) throw conflict('That slot just filled up. Please choose another time.', 'SLOT_FULL');
+    } else if (!isWithinHours(schedule, now)) {
+      throw unprocessable('This restaurant is outside its opening hours. Choose a scheduled slot if available.', 'OUTSIDE_OPENING_HOURS');
+    }
+    const prepareAt = scheduledFor ? new Date(scheduledFor.getTime() - schedule.defaultPrepTimeMinutes * 60_000) : null;
+
     /* ---- prices, straight from the menu ---- */
 
     const requestedIds = [...new Set(input.items.map((item) => item.foodItemId))];
@@ -150,6 +182,7 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
       .select({
         id: foodItems.id,
         name: foodItems.name,
+        optionGroups: foodItems.optionGroups,
         price: foodItems.price,
         discountPrice: foodItems.discountPrice,
         isAvailable: foodItems.isAvailable,
@@ -180,8 +213,11 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
       const row = menu.get(line.foodItemId)!;
       const price = fromDecimalString(row.price);
       const discount = row.discountPrice ? fromDecimalString(row.discountPrice) : null;
-      const unitPriceMinor = discount !== null && discount < price ? discount : price;
+      const resolved = resolveMenuOptions(row.optionGroups ?? [], line.optionIds ?? []);
+      if (!resolved.ok) throw unprocessable(`${row.name}: ${resolved.message}`, 'INVALID_ITEM_OPTIONS');
+      const unitPriceMinor = (discount !== null && discount < price ? discount : price) + resolved.extraMinor;
       return {
+        selections: resolved.selections,
         foodItemId: row.id,
         name: row.name,
         quantity: line.quantity,
@@ -235,6 +271,7 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
 
     const deliveryFeeMinor = quote.feeMinor;
     const totalMinor = subtotalMinor + deliveryFeeMinor;
+    if (totalMinor > 9_999_999_999) throw unprocessable('This order exceeds the maximum supported total. Please reduce quantities.', 'ORDER_TOTAL_TOO_LARGE');
 
     /* ---- customer: always the signed-in account, never the request body ---- */
 
@@ -270,6 +307,9 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
       paymentMethod: input.paymentMethod,
       note: input.note ?? null,
       idempotencyKey: input.idempotencyKey ?? null,
+      scheduledFor,
+      prepareAt,
+      scheduleTimezone: scheduledFor ? schedule.timezone : null,
     });
 
     const orderId = orderInsert.insertId;
@@ -279,6 +319,7 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
         orderId,
         restaurantId: restaurant.id,
         foodItemId: line.foodItemId,
+        selections: line.selections,
         nameSnapshot: line.name,
         unitPrice: toDecimalString(line.unitPriceMinor),
         quantity: line.quantity,
@@ -324,8 +365,12 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
       totalMinor,
       distanceKm: quote.distanceKm,
       restaurantName: restaurant.name,
+      scheduledFor,
+      prepareAt,
+      scheduleTimezone: scheduledFor ? schedule.timezone : null,
       items: lines.map((line) => ({
         name: line.name,
+        selections: line.selections,
         quantity: line.quantity,
         unitPriceMinor: line.unitPriceMinor,
         lineTotalMinor: line.lineTotalMinor,
@@ -356,13 +401,14 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
       totalMinor: result.totalMinor,
       distanceKm: result.distanceKm,
       placedAt: new Date().toISOString(),
-      items: result.items.map((item) => ({ name: item.name, quantity: item.quantity })),
+      scheduledFor: result.scheduledFor,
+      items: result.items.map((item) => ({ name: item.selections.length ? `${item.name} (${optionSummary(item.selections)})` : item.name, quantity: item.quantity })),
     },
   });
 
   void pushToRestaurant(input.restaurantId, {
-    title: `New order #${result.orderNumber}`,
-    body: `${customer.name} · ${formatMoney(result.totalMinor)} · ${result.distanceKm} km`,
+    title: `${result.scheduledFor ? 'Scheduled order' : 'New order'} #${result.orderNumber}`,
+    body: `${customer.name} · ${formatMoney(result.totalMinor)} · ${result.scheduledFor ? `Dispatch ${new Intl.DateTimeFormat('en-GB', { timeZone: result.scheduleTimezone ?? 'Asia/Kathmandu', dateStyle: 'short', timeStyle: 'short' }).format(result.scheduledFor)}` : `${result.distanceKm} km`}`,
     url: '/dashboard/orders',
     tag: `order-${result.id}`,
     orderId: result.id,
@@ -373,7 +419,7 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
     orderId: result.id,
     orderNumber: result.orderNumber,
     restaurantName: result.restaurantName,
-    items: result.items.map((item) => ({ name: item.name, quantity: item.quantity })),
+    items: result.items.map((item) => ({ name: item.selections.length ? `${item.name} (${optionSummary(item.selections)})` : item.name, quantity: item.quantity })),
     subtotalMinor: result.subtotalMinor,
     deliveryFeeMinor: result.deliveryFeeMinor,
     totalMinor: result.totalMinor,
@@ -382,6 +428,8 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
     address: input.delivery.address,
     distanceKm: result.distanceKm,
     note: input.note,
+    scheduledFor: result.scheduledFor,
+    scheduleTimezone: result.scheduleTimezone,
   });
 
   const { restaurantName: _unused, ...placed } = result;
@@ -403,8 +451,12 @@ async function loadPlacedOrder(orderId: number): Promise<PlacedOrder> {
     deliveryFeeMinor: fromDecimalString(order.deliveryFee),
     totalMinor: fromDecimalString(order.total),
     distanceKm: order.distanceKm,
+    scheduledFor: order.scheduledFor,
+    prepareAt: order.prepareAt,
+    scheduleTimezone: order.scheduleTimezone,
     items: items.map((item) => ({
       name: item.nameSnapshot,
+      selections: item.selections ?? [],
       quantity: item.quantity,
       unitPriceMinor: fromDecimalString(item.unitPrice),
       lineTotalMinor: fromDecimalString(item.lineTotal),
@@ -434,6 +486,7 @@ export async function updateOrderStatus(params: {
         customerId: orders.customerId,
         total: orders.total,
         riderUserId: orders.riderUserId,
+        prepareAt: orders.prepareAt,
       })
       .from(orders)
       .where(and(eq(orders.id, params.orderId), eq(orders.restaurantId, params.restaurantId)))
@@ -442,6 +495,10 @@ export async function updateOrderStatus(params: {
 
     if (!order || (params.actor === Actor.RIDER && (params.userId === null || order.riderUserId !== params.userId))) {
       throw notFound('Order not found.', 'ORDER_NOT_FOUND');
+    }
+
+    if (params.to === OrderStatus.PREPARING && order.prepareAt && order.prepareAt.getTime() > Date.now()) {
+      throw conflict('This scheduled order is not due for preparation yet.', 'PREPARATION_TOO_EARLY');
     }
 
     const check = canTransition(order.status, params.to, params.actor, params.reason);

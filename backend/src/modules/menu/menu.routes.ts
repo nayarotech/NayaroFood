@@ -199,6 +199,7 @@ menuRouter.get(
         name: foodItems.name,
         description: foodItems.description,
         imageUrl: foodItems.imageUrl,
+        optionGroups: foodItems.optionGroups,
         price: foodItems.price,
         discountPrice: foodItems.discountPrice,
         prepTimeMinutes: foodItems.prepTimeMinutes,
@@ -214,6 +215,7 @@ menuRouter.get(
       res,
       rows.map((row) => ({
         ...row,
+        optionGroups: row.optionGroups ?? [],
         priceMinor: fromDecimalString(row.price),
         discountPriceMinor: row.discountPrice ? fromDecimalString(row.discountPrice) : null,
         isAvailable: row.isAvailable === 1,
@@ -252,6 +254,7 @@ menuRouter.post(
 
     const [result] = await db.insert(foodItems).values({
       restaurantId,
+      optionGroups: input.optionGroups ?? [],
       categoryId: input.categoryId,
       name: input.name,
       slug,
@@ -284,6 +287,7 @@ menuRouter.patch(
     const result = await db
       .update(foodItems)
       .set({
+        ...(input.optionGroups !== undefined ? { optionGroups: input.optionGroups } : {}),
         ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),

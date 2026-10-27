@@ -21,6 +21,7 @@ interface Summary {
   };
   openOrders: number;
   pendingNow: number;
+  upcoming: number;
 }
 
 const OPEN = 'PENDING,ACCEPTED,PREPARING,READY,OUT_FOR_DELIVERY';
@@ -28,7 +29,7 @@ const HISTORY_PAGE_SIZE = 25;
 
 export default async function OrdersPage({ searchParams }: PageProps<'/dashboard/orders'>) {
   const query = await searchParams;
-  const view = param(query.view) === 'history' ? 'history' : 'open';
+  const view = param(query.view) === 'history' ? 'history' : param(query.view) === 'upcoming' ? 'upcoming' : 'open';
   const page = Math.max(1, Number(param(query.page)) || 1);
   const search = param(query.q)?.trim() || undefined;
 
@@ -36,7 +37,8 @@ export default async function OrdersPage({ searchParams }: PageProps<'/dashboard
   // forgotten; history is paged, newest first.
   const listPath =
     view === 'open'
-      ? `/restaurant/orders?perPage=100&sort=oldest&${OPEN.split(',').map((s) => `status=${s}`).join('&')}`
+      ? `/restaurant/orders?perPage=100&sort=oldest&schedule=due&${OPEN.split(',').map((s) => `status=${s}`).join('&')}`
+      : view === 'upcoming' ? `/restaurant/orders?perPage=${HISTORY_PAGE_SIZE}&page=${page}&schedule=upcoming&${OPEN.split(',').map((s) => `status=${s}`).join('&')}`
       : `/restaurant/orders${toQuery({ perPage: HISTORY_PAGE_SIZE, page, search })}`;
 
   const session = await getSession();
@@ -77,6 +79,7 @@ export default async function OrdersPage({ searchParams }: PageProps<'/dashboard
         <Link href="/dashboard/orders" className={tab(view === 'open')}>
           Needs action{summary && summary.openOrders > 0 ? ` (${summary.openOrders})` : ''}
         </Link>
+        <Link href="/dashboard/orders?view=upcoming" className={tab(view === 'upcoming')}>Upcoming scheduled{summary?.upcoming ? ` (${summary.upcoming})` : ''}</Link>
         <Link href="/dashboard/orders?view=history" className={tab(view === 'history')}>
           All orders
         </Link>
@@ -102,10 +105,10 @@ export default async function OrdersPage({ searchParams }: PageProps<'/dashboard
       {orders ? (
         <>
           <OrderBoard initial={orders.items} view={view} riders={riders} canAssign={canAssign} />
-          {view === 'history' && (
+          {view !== 'open' && (
             <Pagination
               basePath="/dashboard/orders"
-              params={{ view: 'history', q: search }}
+              params={{ view, q: search }}
               page={orders.meta.page}
               totalPages={orders.meta.totalPages}
               total={orders.meta.total}

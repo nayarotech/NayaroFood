@@ -1,3 +1,4 @@
+import { menuItemLabel } from '@nayaro/shared';
 import { platformDayStart } from '../../lib/platform-day.js';
 import { Router } from 'express';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
@@ -95,10 +96,10 @@ riderRouter.get(
     const items = new Map<number, { name: string; quantity: number }[]>();
     if (rows.length > 0) {
       const lines = await db
-        .select({ orderId: orderItems.orderId, name: orderItems.nameSnapshot, quantity: orderItems.quantity })
+        .select({ orderId: orderItems.orderId, name: orderItems.nameSnapshot, selections: orderItems.selections, quantity: orderItems.quantity })
         .from(orderItems)
         .where(inArray(orderItems.orderId, rows.map((r) => r.id)));
-      for (const line of lines) items.set(line.orderId, [...(items.get(line.orderId) ?? []), { name: line.name, quantity: line.quantity }]);
+      for (const line of lines) items.set(line.orderId, [...(items.get(line.orderId) ?? []), { name: menuItemLabel(line.name, line.selections), quantity: line.quantity }]);
     }
 
     paginated(
@@ -108,6 +109,8 @@ riderRouter.get(
         orderNumber: row.orderNumber,
         status: row.status,
         placedAt: row.placedAt,
+        scheduledFor: row.scheduledFor,
+        scheduleTimezone: row.scheduleTimezone,
         assignedAt: row.assignedAt,
         pickedUpAt: row.pickedUpAt,
         deliveredAt: row.deliveredAt,

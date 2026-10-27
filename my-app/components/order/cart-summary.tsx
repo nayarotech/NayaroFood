@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import type { Route } from 'next';
+import { cartLineKey } from '@/lib/menu-options';
 import { useCart } from '@/lib/cart';
 import { formatMoney } from '@/lib/format';
 import type { DeliveryQuote } from '@/lib/types';
@@ -55,9 +56,9 @@ export function CartSummary({
         </div>
         <ul className="mt-3 space-y-1.5 text-sm">
           {cart.lines.map((line) => (
-            <li key={line.id} className="flex gap-2">
+            <li key={cartLineKey(line.id, line.optionIds)} className="flex gap-2">
               <span className="font-semibold tabular-nums">{line.quantity}×</span>
-              <span className="min-w-0 flex-1 truncate">{line.name}</span>
+              <span className="min-w-0 flex-1">{line.name}{line.optionLabels?.length ? <span className="block text-xs text-ink-muted">{line.optionLabels.join(', ')}</span> : null}</span>
               <span className="tabular-nums">{formatMoney(line.priceMinor * line.quantity)}</span>
             </li>
           ))}

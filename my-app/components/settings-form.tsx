@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, apiPatch, apiPost } from '@/lib/api';
+import { HoursSettingsCard, type HoursSettings } from '@/components/hours-settings';
 import { ImageUpload } from '@/components/image-upload';
 
-export interface RestaurantOverview {
+export interface RestaurantOverview extends HoursSettings {
   name: string;
   logoUrl: string | null;
   coverUrl: string | null;
@@ -50,6 +51,7 @@ export function SettingsForm({
   return (
     <div className="space-y-5">
       <TradingCard overview={overview} />
+      <HoursSettingsCard settings={overview} />
       <LocationCard overview={overview} />
       <PhotosCard overview={overview} />
       <ProfileCard overview={overview} />
@@ -84,10 +86,10 @@ function TradingCard({ overview }: { overview: RestaurantOverview }) {
   }
 
   return (
-    <Card title="Trading" description="Turn these off during a rush or when you close. You stay listed either way." notice={notice}>
+    <Card title="Trading" description="Manual switches override weekly hours and stop all new orders, including scheduled orders." notice={notice}>
       <div className="space-y-3">
         <Toggle
-          label="Open for business"
+          label="Allow orders during opening hours"
           hint="When off, customers see you as closed and cannot check out."
           checked={isOpen}
           disabled={busy}

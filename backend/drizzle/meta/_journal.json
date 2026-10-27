@@ -64,6 +64,20 @@
       "when": 1791341143529,
       "tag": "0008_gifted_wolverine",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1793062920061,
+      "tag": "0009_charming_mister_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1793068050653,
+      "tag": "0010_workable_starhawk",
+      "breakpoints": true
     }
   ]
 }

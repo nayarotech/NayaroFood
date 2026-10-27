@@ -18,6 +18,7 @@ import {
  */
 export const placeOrderItemSchema = z.object({
   foodItemId: idSchema,
+  optionIds: z.array(z.uuid()).max(200).refine((ids) => new Set(ids).size === ids.length, 'Choose each option only once.').optional(),
   quantity: z.coerce.number().int().min(1, 'Quantity must be at least 1.').max(99),
   note: z.string().trim().max(200).optional(),
 });
@@ -53,6 +54,7 @@ export const placeOrderSchema = z.object({
    * instead of creating a duplicate when a customer double-taps "Place order".
    */
   idempotencyKey: z.uuid().optional(),
+  scheduledFor: z.iso.datetime({ offset: true }).optional(),
 });
 export type PlaceOrderInput = z.infer<typeof placeOrderSchema>;
 
@@ -70,6 +72,7 @@ export const orderListQuerySchema = paginationSchema.extend({
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
   customerId: idSchema.optional(),
+  schedule: z.enum(['upcoming', 'due']).optional(),
   sort: z.enum(['newest', 'oldest', 'total_high', 'total_low']).default('newest'),
 });
 export type OrderListQueryInput = z.infer<typeof orderListQuerySchema>;

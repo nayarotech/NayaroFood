@@ -1,3 +1,4 @@
+import { menuItemLabel } from '@nayaro/shared';
 import { OFFSET_MINUTES, platformDate, platformDayStart } from '../../lib/platform-day.js';
 import { Router } from 'express';
 import { and, asc, desc, eq, gte, inArray, isNull, like, lt, or, sql, type SQL } from 'drizzle-orm';
@@ -845,7 +846,8 @@ adminRouter.get(
       cancelledReason: o.cancelledReason,
       items: items.map((item) => ({
         id: item.id,
-        name: item.nameSnapshot,
+        name: menuItemLabel(item.nameSnapshot, item.selections),
+        selections: item.selections ?? [],
         quantity: item.quantity,
         unitPriceMinor: toMinor(item.unitPrice),
         lineTotalMinor: toMinor(item.lineTotal),

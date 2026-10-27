@@ -4,3 +4,5 @@ export * from './geo.js';
 export * from './delivery.js';
 export * from './order-status.js';
 export * from './schemas/index.js';
+export * from './schedule.js';
+export * from './menu-options.js';

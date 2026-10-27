@@ -18,6 +18,9 @@ export interface DashboardOrder {
   trackingCode: string | null;
   status: OrderStatus;
   placedAt: string;
+  scheduledFor: string | null;
+  prepareAt: string | null;
+  scheduleTimezone: string | null;
   customerName: string;
   customerPhone: string;
   deliveryAddress: string;
@@ -91,7 +94,7 @@ export function OrderBoard({
   canAssign = false,
 }: {
   initial: DashboardOrder[];
-  view: 'open' | 'history';
+  view: 'open' | 'history' | 'upcoming';
   riders?: RiderOption[];
   canAssign?: boolean;
 }) {
@@ -104,9 +107,9 @@ export function OrderBoard({
 
   // Keep "3 min ago" honest without a refetch.
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    const timer = setInterval(() => { setNow(Date.now()); router.refresh(); }, 30_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [router]);
 
   async function assign(order: DashboardOrder, riderId: number | null) {
     setBusyId(order.id);
@@ -138,7 +141,7 @@ export function OrderBoard({
       <p className="rounded-ny-card border border-dashed border-line-strong bg-surface px-6 py-12 text-center text-sm text-ink-muted">
         {view === 'open'
           ? 'No orders waiting on you right now. New ones will pop up here instantly.'
-          : 'No orders yet.'}
+          : view === 'upcoming' ? 'No scheduled orders waiting for preparation.' : 'No orders yet.'}
       </p>
     );
   }
@@ -153,7 +156,7 @@ export function OrderBoard({
 
       <ul className="space-y-3">
         {initial.map((order) => {
-          const waitingMinutes = (now - new Date(order.placedAt).getTime()) / 60_000;
+          const waitingMinutes = (now - new Date(order.prepareAt ?? order.placedAt).getTime()) / 60_000;
           const urgent = order.status === 'PENDING' && waitingMinutes >= 5;
           return (
             <li
@@ -170,6 +173,8 @@ export function OrderBoard({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-display font-bold tabular-nums">#{order.orderNumber}</span>
+                    {order.scheduledFor && <span className="text-xs font-medium text-accent-label">Dispatch {new Intl.DateTimeFormat('en-GB', { timeZone: order.scheduleTimezone ?? 'Asia/Kathmandu', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(new Date(order.scheduledFor))}</span>}
+                    {order.prepareAt && new Date(order.prepareAt).getTime() > now && <span className="text-xs text-ink-muted">Start preparing {new Intl.DateTimeFormat('en-GB', { timeZone: order.scheduleTimezone ?? 'Asia/Kathmandu', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(order.prepareAt))}</span>}
                     <OrderStatusBadge status={order.status} />
                     {order.trackingCode && (
                       <span className="font-mono text-[11px] text-ink-label" title="Customer's tracking code">
@@ -264,7 +269,7 @@ export function OrderBoard({
               )}
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                {NEXT_ACTIONS[order.status].map((action) => (
+                {NEXT_ACTIONS[order.status].filter((action) => action.to !== 'PREPARING' || !order.prepareAt || new Date(order.prepareAt).getTime() <= now).map((action) => (
                     <button
                       key={action.to}
                       type="button"

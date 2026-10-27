@@ -19,6 +19,8 @@ export interface TrackedOrder {
   orderNumber: string;
   status: Status;
   placedAt: string;
+  scheduledFor: string | null;
+  scheduleTimezone: string | null;
   acceptedAt: string | null;
   readyAt: string | null;
   deliveredAt: string | null;
@@ -101,7 +103,7 @@ export function OrderTracker({
   const headline = HEADLINE[order.status];
 
   const readyBy =
-    order.status === 'ACCEPTED' || order.status === 'PREPARING'
+    !order.scheduledFor && (order.status === 'ACCEPTED' || order.status === 'PREPARING')
       ? new Date(new Date(order.acceptedAt ?? order.placedAt).getTime() + order.prepMinutes * 60_000)
       : null;
 
@@ -181,7 +183,7 @@ export function OrderTracker({
             <h1 className={`font-display text-xl font-bold tracking-tight ${failed ? 'text-danger' : ''}`} aria-live="polite">
               {headline.title}
             </h1>
-            <p className={`mt-0.5 text-sm ${failed ? 'text-danger' : 'text-ink-muted'}`}>{headline.body}</p>
+            <p className={`mt-0.5 text-sm ${failed ? 'text-danger' : 'text-ink-muted'}`}>{headline.body}{order.scheduledFor && ` Scheduled dispatch: ${new Intl.DateTimeFormat('en-GB', { timeZone: order.scheduleTimezone ?? 'Asia/Kathmandu', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(order.scheduledFor))} (${order.scheduleTimezone}). Delivery follows.`}</p>
             {failed && order.cancelledReason && <p className="mt-1 text-sm font-medium text-danger">Reason: {order.cancelledReason}</p>}
             {readyBy && (
               <p className="mt-2 text-sm">
