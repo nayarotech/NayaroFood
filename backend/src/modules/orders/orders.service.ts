@@ -132,6 +132,17 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
       throw unprocessable('This restaurant is not accepting orders.', 'ORDERS_PAUSED');
     }
 
+    if (input.idempotencyKey) {
+      const [existing] = await tx.select({ id: orders.id, customerId: orders.customerId })
+        .from(orders)
+        .where(and(eq(orders.restaurantId, restaurant.id), eq(orders.idempotencyKey, input.idempotencyKey)))
+        .for('update').limit(1);
+      if (existing) {
+        if (existing.customerId !== customer.customerId) throw conflict('That checkout key is already in use.', 'IDEMPOTENCY_CONFLICT');
+        return { replayOrderId: existing.id };
+      }
+    }
+
     /* ---- prices, straight from the menu ---- */
 
     const requestedIds = [...new Set(input.items.map((item) => item.foodItemId))];
@@ -322,6 +333,8 @@ export async function placeOrder(input: PlaceOrderInput, customer: CustomerConte
     };
   });
 
+  if ('replayOrderId' in result && result.replayOrderId !== undefined) return loadPlacedOrder(result.replayOrderId);
+
   /* ---- fan-out, all post-commit and all best-effort ----
      Three independent channels, because each covers a case the others cannot:
        SSE   — the dashboard is open right now
@@ -413,7 +426,7 @@ export async function updateOrderStatus(params: {
   userId: number | null;
   reason?: string | undefined;
 }): Promise<{ id: number; status: OrderStatus }> {
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [order] = await tx
       .select({
         id: orders.id,
@@ -427,7 +440,9 @@ export async function updateOrderStatus(params: {
       .for('update')
       .limit(1);
 
-    if (!order) throw notFound('Order not found.', 'ORDER_NOT_FOUND');
+    if (!order || (params.actor === Actor.RIDER && (params.userId === null || order.riderUserId !== params.userId))) {
+      throw notFound('Order not found.', 'ORDER_NOT_FOUND');
+    }
 
     const check = canTransition(order.status, params.to, params.actor, params.reason);
     if (!check.ok) throw conflict(check.message, check.code);
@@ -481,17 +496,12 @@ export async function updateOrderStatus(params: {
         );
     }
 
-    emitRealtime({
-      type: 'order.status',
-      restaurantId: params.restaurantId,
-      orderId: order.id,
-      status: params.to,
-    });
-    // The assigned rider's screen follows the order too.
-    if (order.riderUserId) {
-      emitToUser(order.riderUserId, { type: 'order.status', orderId: order.id, status: params.to });
-    }
-
-    return { id: order.id, status: params.to };
+    return { id: order.id, status: params.to, riderUserId: order.riderUserId };
   });
+
+  emitRealtime({ type: 'order.status', restaurantId: params.restaurantId, orderId: result.id, status: result.status });
+  if (result.riderUserId) {
+    emitToUser(result.riderUserId, { type: 'order.status', orderId: result.id, status: result.status });
+  }
+  return { id: result.id, status: result.status };
 }

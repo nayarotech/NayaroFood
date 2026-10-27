@@ -134,3 +134,17 @@ and only their hash is stored.
 The UI uses the nayaro.tech design tokens: accent `#1f5eff`, hover `#1749cc`,
 background `#f7f8fa`, surface `#ffffff`, ink `#111726`; Archivo for display and
 IBM Plex Sans for body; radii 6 / 10 / 20px.
+
+## Regression checks
+
+`pnpm lint`, `pnpm typecheck`, and `pnpm test` run without a local database.
+Build shared code first after installing: `pnpm --filter @nayaro/shared build`.
+
+Database regression tests use real MySQL transactions and cover concurrent OTP
+attempts, single-use codes, refresh-token replay, rider/tenant authorization,
+checkout retries, and publishing order status after commit. Point the backend
+environment at a dedicated database whose name ends in `_test`, set
+`NODE_ENV=test`, run `pnpm db:migrate`, then run
+`pnpm --filter @nayaro/api test:integration`. Tests delete their own fixtures.
+Never point these tests at a production database. GitHub Actions provisions a
+fresh MySQL service and runs these checks on pushes and pull requests.

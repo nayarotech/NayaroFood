@@ -1,3 +1,4 @@
+import { OFFSET_MINUTES, platformDate, platformDayStart } from '../../lib/platform-day.js';
 import { Router } from 'express';
 import { and, asc, desc, eq, gte, inArray, isNull, like, lt, or, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
@@ -116,21 +117,6 @@ const toIso = (value: unknown): string | null => {
 /* Platform days                                                       */
 /* ------------------------------------------------------------------ */
 
-/** Minutes east of UTC for the platform's reporting day, e.g. +05:45 → 345. */
-const OFFSET_MINUTES = (() => {
-  const [, sign, hours, minutes] = /^([+-])(\d{2}):(\d{2})$/.exec(env.PLATFORM_UTC_OFFSET)!;
-  return (sign === '-' ? -1 : 1) * (Number(hours) * 60 + Number(minutes));
-})();
-
-/** UTC instant at which the platform day `daysAgo` days back began. */
-function platformDayStart(daysAgo = 0): Date {
-  const shifted = Date.now() + OFFSET_MINUTES * 60_000;
-  const dayStart = shifted - (shifted % 86_400_000) - daysAgo * 86_400_000;
-  return new Date(dayStart - OFFSET_MINUTES * 60_000);
-}
-
-/** "2026-10-07" interpreted as a platform-local calendar day. */
-const platformDate = (isoDate: string): Date => new Date(`${isoDate}T00:00:00${env.PLATFORM_UTC_OFFSET}`);
 
 const localDay = (column: SQL | typeof orders.placedAt) =>
   sql<string>`date_format(convert_tz(${column}, '+00:00', ${env.PLATFORM_UTC_OFFSET}), '%Y-%m-%d')`;

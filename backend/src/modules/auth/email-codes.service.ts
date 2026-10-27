@@ -80,34 +80,40 @@ export async function issueCode(params: {
  * Returns the code's stored payload on success and marks it used.
  */
 export async function consumeCode(purpose: CodePurpose, email: string, code: string): Promise<{ payload: unknown }> {
-  const [row] = await db
-    .select()
-    .from(emailCodes)
-    .where(live(email, purpose))
-    .orderBy(desc(emailCodes.createdAt))
-    .limit(1);
+  const result = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(emailCodes)
+      .where(live(email, purpose))
+      .orderBy(desc(emailCodes.createdAt), desc(emailCodes.id))
+      .for('update')
+      .limit(1);
 
-  if (!row) throw badRequest('That code isn’t valid any more. Ask for a new one.', 'NO_ACTIVE_CODE');
-  if (row.expiresAt.getTime() <= Date.now()) throw badRequest('That code has expired. Ask for a new one.', 'CODE_EXPIRED');
-  if (row.attempts >= row.maxAttempts) {
-    throw tooManyRequests('Too many wrong attempts. Ask for a new code.', 'CODE_ATTEMPTS_EXCEEDED');
-  }
+    if (!row) throw badRequest('That code isn’t valid any more. Ask for a new one.', 'NO_ACTIVE_CODE');
+    if (row.expiresAt.getTime() <= Date.now()) throw badRequest('That code has expired. Ask for a new one.', 'CODE_EXPIRED');
+    if (row.attempts >= row.maxAttempts) {
+      throw tooManyRequests('Too many wrong attempts. Ask for a new code.', 'CODE_ATTEMPTS_EXCEEDED');
+    }
 
-  if (!safeEquals(hashToken(code), row.codeHash)) {
-    await db.update(emailCodes).set({ attempts: row.attempts + 1 }).where(eq(emailCodes.id, row.id));
-    const left = row.maxAttempts - row.attempts - 1;
-    throw badRequest(
-      left > 0 ? `That code isn’t right. ${left} attempt${left === 1 ? '' : 's'} left.` : 'That code isn’t right. Ask for a new one.',
-      'CODE_INCORRECT',
-    );
-  }
+    if (!safeEquals(hashToken(code), row.codeHash)) {
+      await tx.update(emailCodes).set({ attempts: row.attempts + 1 }).where(eq(emailCodes.id, row.id));
+      const left = row.maxAttempts - row.attempts - 1;
+      return { error: badRequest(
+        left > 0 ? `That code isn’t right. ${left} attempt${left === 1 ? '' : 's'} left.` : 'That code isn’t right. Ask for a new one.',
+        'CODE_INCORRECT',
+      ) };
+    }
 
-  // Single use: claim it atomically so two simultaneous requests can't both succeed.
-  const claimed = await db
-    .update(emailCodes)
-    .set({ consumedAt: new Date() })
-    .where(and(eq(emailCodes.id, row.id), isNull(emailCodes.consumedAt)));
-  if (claimed[0].affectedRows === 0) throw badRequest('That code has already been used.', 'CODE_USED');
+    // Single use: claim it atomically so two simultaneous requests can't both succeed.
+    const claimed = await tx
+      .update(emailCodes)
+      .set({ consumedAt: new Date() })
+      .where(and(eq(emailCodes.id, row.id), isNull(emailCodes.consumedAt)));
+    if (claimed[0].affectedRows === 0) throw badRequest('That code has already been used.', 'CODE_USED');
 
-  return { payload: row.payload };
+    return { payload: row.payload };
+  });
+  // Wrong attempts must commit rather than roll back with the response error.
+  if (result.error) throw result.error;
+  return { payload: result.payload };
 }

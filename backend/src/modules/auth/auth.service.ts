@@ -7,7 +7,6 @@ import {
   UserRole,
   UserStatus,
   normalisePhone,
-  slugify,
   type CompleteSignupInput,
   type RegisterRestaurantInput,
 } from '@nayaro/shared';
@@ -28,7 +27,7 @@ import {
   signAccessToken,
 } from '../../lib/tokens.js';
 import { uniqueSlug } from '../../lib/slug.js';
-import { badRequest, conflict, forbidden, notFound, unauthorized } from '../../http/errors.js';
+import { badRequest, conflict, forbidden, unauthorized } from '../../http/errors.js';
 import { consumeCode, issueCode } from './email-codes.service.js';
 import jwt from 'jsonwebtoken';
 import { env } from '../../config/env.js';
@@ -445,57 +444,62 @@ export async function refreshSession(
 ): Promise<SessionResult> {
   const hash = hashToken(presentedToken);
 
-  const [row] = await db
-    .select({
-      id: refreshTokens.id,
-      userId: refreshTokens.userId,
-      expiresAt: refreshTokens.expiresAt,
-      revokedAt: refreshTokens.revokedAt,
-    })
-    .from(refreshTokens)
-    .where(eq(refreshTokens.tokenHash, hash))
-    .limit(1);
+  const result = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({
+        id: refreshTokens.id,
+        userId: refreshTokens.userId,
+        expiresAt: refreshTokens.expiresAt,
+        revokedAt: refreshTokens.revokedAt,
+      })
+      .from(refreshTokens)
+      .where(eq(refreshTokens.tokenHash, hash))
+      .for('update')
+      .limit(1);
 
-  if (!row) throw unauthorized('Session not recognised. Please sign in again.', 'REFRESH_INVALID');
+    if (!row) throw unauthorized('Session not recognised. Please sign in again.', 'REFRESH_INVALID');
 
-  if (row.revokedAt !== null) {
-    // Replay of a rotated token: assume theft and drop every live session.
-    await revokeAllSessions(row.userId);
-    throw unauthorized('Session reuse detected. Please sign in again.', 'REFRESH_REPLAYED');
-  }
+    if (row.revokedAt !== null) {
+      // Replay of a rotated token: assume theft and drop every live session.
+      await tx.update(refreshTokens).set({ revokedAt: new Date() })
+        .where(and(eq(refreshTokens.userId, row.userId), isNull(refreshTokens.revokedAt)));
+      // Return the error so revocations commit before the request is rejected.
+      return { error: unauthorized('Session reuse detected. Please sign in again.', 'REFRESH_REPLAYED') };
+    }
 
-  if (row.expiresAt.getTime() <= Date.now()) {
-    throw unauthorized('Your session has expired. Please sign in again.', 'REFRESH_EXPIRED');
-  }
+    if (row.expiresAt.getTime() <= Date.now()) {
+      throw unauthorized('Your session has expired. Please sign in again.', 'REFRESH_EXPIRED');
+    }
 
-  const [user] = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      name: users.name,
-      phone: users.phone,
-      role: users.role,
-      status: users.status,
-      tokenVersion: users.tokenVersion,
-    })
-    .from(users)
-    .where(eq(users.id, row.userId))
-    .limit(1);
+    const [user] = await tx
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        phone: users.phone,
+        role: users.role,
+        status: users.status,
+        tokenVersion: users.tokenVersion,
+      })
+      .from(users)
+      .where(eq(users.id, row.userId))
+      .limit(1);
 
-  if (!user || user.status !== UserStatus.ACTIVE) {
-    throw unauthorized('Account is not available.', 'ACCOUNT_UNAVAILABLE');
-  }
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw unauthorized('Account is not available.', 'ACCOUNT_UNAVAILABLE');
+    }
 
-  const restaurantId = await findRestaurantIdForUser(user.id);
+    const restaurantId = await findRestaurantIdForUser(user.id, tx);
 
-  return db.transaction(async (tx) => {
     const session = await issueSession(tx, user, restaurantId, false, meta);
     await tx
       .update(refreshTokens)
       .set({ revokedAt: new Date(), replacedByHash: hashToken(session.refreshToken) })
       .where(eq(refreshTokens.id, row.id));
-    return session;
+    return { session };
   });
+  if (result.error) throw result.error;
+  return result.session;
 }
 
 export async function revokeSession(presentedToken: string): Promise<void> {
@@ -512,8 +516,8 @@ export async function revokeAllSessions(userId: number): Promise<void> {
     .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
 }
 
-export async function findRestaurantIdForUser(userId: number): Promise<number | null> {
-  const [row] = await db
+export async function findRestaurantIdForUser(userId: number, executor: Executor = db): Promise<number | null> {
+  const [row] = await executor
     .select({ restaurantId: restaurantUsers.restaurantId })
     .from(restaurantUsers)
     .where(eq(restaurantUsers.userId, userId))

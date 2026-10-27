@@ -1,3 +1,4 @@
+import { platformDayStart } from '../../lib/platform-day.js';
 import { Router } from 'express';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -47,8 +48,7 @@ const mine = (req: Parameters<typeof tenantOf>[0]) =>
 riderRouter.get(
   '/summary',
   asyncHandler(async (req, res) => {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    const startOfDay = platformDayStart();
     const [[restaurant], [row]] = await Promise.all([
       db.select({ name: restaurants.name, phone: restaurants.phone }).from(restaurants).where(eq(restaurants.id, tenantOf(req))).limit(1),
       db
@@ -150,7 +150,6 @@ riderRouter.patch(
   asyncHandler(async (req, res) => {
     const { id } = validatedParams<{ id: number }>(res);
     const { status, reason } = req.body as RiderStatusInput;
-    await loadMine(req, id);
     ok(
       res,
       await updateOrderStatus({
@@ -173,8 +172,12 @@ riderRouter.put(
   asyncHandler(async (req, res) => {
     const { id } = validatedParams<{ id: number }>(res);
     const { note } = req.body as { note: string };
-    await loadMine(req, id);
-    await db.update(orders).set({ deliveryNote: note || null }).where(eq(orders.id, id));
+    await db.transaction(async (tx) => {
+      const [order] = await tx.select({ id: orders.id }).from(orders)
+        .where(and(eq(orders.id, id), mine(req))).for('update').limit(1);
+      if (!order) throw notFound('That delivery isn’t assigned to you.', 'ORDER_NOT_FOUND');
+      await tx.update(orders).set({ deliveryNote: note || null }).where(and(eq(orders.id, id), mine(req)));
+    });
     ok(res, { id, note });
   }),
 );

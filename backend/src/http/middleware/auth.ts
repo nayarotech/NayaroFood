@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { RestaurantRole, RestaurantStatus, StaffPermission, UserRole, UserStatus } from '@nayaro/shared';
 import { db } from '../../db/client.js';

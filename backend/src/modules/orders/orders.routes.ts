@@ -1,5 +1,6 @@
+import { platformDate, platformDayStart } from '../../lib/platform-day.js';
 import { Router } from 'express';
-import { and, asc, desc, eq, gte, inArray, like, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, like, lt, or, sql } from 'drizzle-orm';
 import {
   Actor,
   OrderStatus,
@@ -348,8 +349,8 @@ tenantOrdersRouter.get(
       filters.push(inArray(orders.status, statuses));
     }
     if (query.customerId) filters.push(eq(orders.customerId, query.customerId));
-    if (query.from) filters.push(gte(orders.placedAt, new Date(`${query.from}T00:00:00Z`)));
-    if (query.to) filters.push(lte(orders.placedAt, new Date(`${query.to}T23:59:59Z`)));
+    if (query.from) filters.push(gte(orders.placedAt, platformDate(query.from)));
+    if (query.to) filters.push(lt(orders.placedAt, new Date(platformDate(query.to).getTime() + 86_400_000)));
     if (query.search) {
       const term = `%${query.search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
       filters.push(
@@ -444,8 +445,7 @@ tenantOrdersRouter.get(
   '/summary',
   asyncHandler(async (req, res) => {
     const restaurantId = tenantOf(req);
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    const startOfDay = platformDayStart();
 
     const [row] = await db
       .select({
